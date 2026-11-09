@@ -1,0 +1,74 @@
+﻿{
+    "dataset":  "data\\sibi\\Labeled Official Indonesian Sign Language (SIBI) Alphabet\\sibi_alphabet_multi_bg_no_augmentation",
+    "method":  "MediaPipe Hands on full images; 21 normalized x/y landmarks + Keras MLP",
+    "classes":  [
+                    "A",
+                    "B",
+                    "C",
+                    "D",
+                    "E",
+                    "F",
+                    "G",
+                    "H",
+                    "I",
+                    "K",
+                    "L",
+                    "M",
+                    "N",
+                    "O",
+                    "P",
+                    "Q",
+                    "R",
+                    "S",
+                    "T",
+                    "U",
+                    "V",
+                    "W",
+                    "X",
+                    "Y"
+                ],
+    "class_count":  24,
+    "samples":  {
+                    "train":  4197,
+                    "val":  483,
+                    "test":  247
+                },
+    "best_validation_accuracy":  0.9503105878829956,
+    "test_accuracy":  0.9392712712287903,
+    "test_loss":  0.283245712518692,
+    "epochs_completed":  37,
+    "excluded_dynamic_letters":  [
+                                     "J",
+                                     "Z"
+                                 ],
+    "dataset_source":  "Teguh Andriyanto, Labeled Official Indonesian Sign Language (SIBI) Alphabet",
+    "dataset_license":  "CC BY 4.0",
+    "media_pipe_detections":  {
+                                  "train":  {
+                                                "detected":  4197,
+                                                "images":  6120,
+                                                "skipped":  {
+                                                                "no_hand":  1923
+                                                            }
+                                            },
+                                  "val":  {
+                                              "detected":  483,
+                                              "images":  720,
+                                              "skipped":  {
+                                                              "no_hand":  237
+                                                          }
+                                          },
+                                  "test":  {
+                                               "detected":  247,
+                                               "images":  360,
+                                               "skipped":  {
+                                                               "no_hand":  113
+                                                           }
+                                           }
+                              },
+    "alphabet_reference":  "Abjad dalam SIBI reference image supplied in the conversation",
+    "motion_letters":  [
+                           "J",
+                           "Z"
+                       ]
+}

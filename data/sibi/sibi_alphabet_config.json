@@ -1,0 +1,8 @@
+{
+  "reference": "Abjad dalam SIBI reference image supplied in the conversation",
+  "alphabet_order": "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+  "motion_letters": ["J", "Z"],
+  "dataset_label_source": "letter encoded in each image filename",
+  "model_class_selection": "alphabet order filtered to letters present in the selected training split",
+  "keyboard_fallback_letters": ["J", "Z"]
+}
