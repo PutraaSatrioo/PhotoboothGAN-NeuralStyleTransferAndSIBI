@@ -1,5 +1,6 @@
 (() => {
   const video = document.getElementById('camera');
+  const trackingVideo = document.getElementById('tracking-camera');
   const welcomeCameraPlaceholder = document.getElementById('welcome-camera-placeholder');
   const preview = document.getElementById('upload-preview');
   const cameraFlash = document.getElementById('camera-flash');
@@ -228,9 +229,8 @@
   function finishCaptureSet() {
     if (capturedPhotos.length !== maxPhotos) return;
     shutter.disabled = true;
+    document.querySelector('.booth-grid').hidden = true;
     document.getElementById('capture-picker').hidden = false;
-    document.getElementById('create-button').hidden = true;
-    document.getElementById('edit-selection').hidden = true;
     renderCapturePicker();
     document.getElementById('capture-picker').scrollIntoView({behavior: 'smooth', block: 'start'});
   }
@@ -263,6 +263,9 @@
     try {
       cameraStream = await navigator.mediaDevices.getUserMedia({video: {facingMode: 'user'}, audio: false});
       video.srcObject = cameraStream;
+      trackingVideo.srcObject = cameraStream;
+      trackingVideo.play().catch(err => console.warn('Background tracking video play notice:', err));
+      video.play().catch(err => console.warn('Camera preview play notice:', err));
       video.hidden = false;
       welcomeCameraPlaceholder.hidden = true;
       placeholder.hidden = true;
@@ -424,10 +427,12 @@
 
       let isProcessing = false;
       async function sendFrame() {
-        if (video && video.readyState >= 2 && !video.paused && !isProcessing) {
+        const source = trackingVideo && trackingVideo.readyState >= 2 && !trackingVideo.paused
+          ? trackingVideo : video;
+        if (source && source.readyState >= 2 && !source.paused && !isProcessing) {
           isProcessing = true;
           try {
-            await hands.send({image: video});
+            await hands.send({image: source});
           } catch (err) {
             console.error('Hands send error:', err);
           } finally {
@@ -474,8 +479,8 @@
     const dy = thumbTip.y - indexTip.y;
     const pinchDetected = Math.hypot(dx, dy) < 0.075;
 
-    // Keep the last cursor position while pinching. The index finger moves
-    // toward the thumb during a click, so following it here causes click drift.
+    // Keep the last cursor position while pinching so the thumb/index click
+    // gesture does not move the cursor away from the target.
     if (pinchDetected && !isPinching) {
       isPinching = true;
       if (handCursor) handCursor.classList.add('pinching');
@@ -487,23 +492,21 @@
       if (handPill) handPill.classList.remove('pinching');
     }
 
-    // Use 85% of the previous hand-motion zone, then map it to the full page.
-    // The cursor reaches page edges with less hand travel (especially the bottom controls).
+    // Map the full camera range to the page so small hand movements have less effect.
     const clamp01 = (v) => Math.max(0, Math.min(1, v));
-    const handReachScale = 0.85;
-    const handZoneStart = 0.15;
-    const handZoneRange = 0.70 * handReachScale;
+    const handZoneStart = 0.02;
+    const handZoneRange = 0.96;
     if (!pinchDetected) {
-      const normX = clamp01((indexTip.x - handZoneStart) / handZoneRange);
-      const normY = clamp01((indexTip.y - handZoneStart) / handZoneRange);
+      const normX = clamp01((thumbTip.x - handZoneStart) / handZoneRange);
+      const normY = clamp01((thumbTip.y - handZoneStart) / handZoneRange);
 
       // Mirroring X coordinate because webcam view is flipped horizontally like a mirror
       const rawX = (1 - normX) * window.innerWidth;
       const rawY = normY * window.innerHeight;
 
-      // Smooth cursor movement (Lerp)
-      cursorX += (rawX - cursorX) * 0.40;
-      cursorY += (rawY - cursorY) * 0.40;
+      // Stronger smoothing damps camera jitter and makes cursor motion steadier.
+      cursorX += (rawX - cursorX) * 0.18;
+      cursorY += (rawY - cursorY) * 0.18;
     }
 
     if (handCursor) {
@@ -558,16 +561,16 @@
   document.getElementById('confirm-selection').addEventListener('click', () => {
     if (selectedForFrame.size !== framePhotoCount) return;
     document.getElementById('capture-picker').hidden = true;
+    document.querySelector('.booth-grid').hidden = false;
     createButton.hidden = false;
     createButton.disabled = false;
     document.getElementById('edit-selection').hidden = false;
-    document.querySelector('.style-column').scrollIntoView({behavior: 'smooth', block: 'center'});
+    window.scrollTo({top: 0, behavior: 'smooth'});
   });
 
   document.getElementById('edit-selection').addEventListener('click', () => {
+    document.querySelector('.booth-grid').hidden = true;
     document.getElementById('capture-picker').hidden = false;
-    createButton.hidden = true;
-    document.getElementById('edit-selection').hidden = true;
     document.getElementById('capture-picker').scrollIntoView({behavior: 'smooth', block: 'start'});
   });
 
@@ -577,6 +580,7 @@
     selectedForFrame = new Set();
     updateShotCounter();
     document.getElementById('capture-picker').hidden = true;
+    document.querySelector('.booth-grid').hidden = false;
     document.getElementById('capture-grid').replaceChildren();
     document.getElementById('selection-count').textContent = '0 / 3 DIPILIH';
     document.getElementById('confirm-selection').disabled = true;

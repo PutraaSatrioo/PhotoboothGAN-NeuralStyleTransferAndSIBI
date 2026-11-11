@@ -12,18 +12,18 @@ Mengubah repo neural style transfer menjadi photobooth web lokal: pengunjung men
 2. Layar awal meminta izin kamera dan menampilkan preview live. MediaPipe Hands mendeteksi landmark untuk kontrol tangan dan classifier SIBI statis yang dilatih dari dataset lokal.
 3. Setelah halaman photobooth terbuka, kamera terus berjalan; bila kamera tidak tersedia, pengguna tetap bisa memakai keyboard dan memilih gambar dari perangkat.
 4. Tekan shutter untuk mengambil lima foto otomatis, masing-masing dengan hitung mundur tiga detik dan kilatan putih satu detik setelah jepret; alternatifnya, unggah lima foto.
-5. Pilih tepat tiga dari lima foto untuk frame. Kelima foto tetap akan diberi style dan digunakan untuk GIF loop.
-6. Pilih satu dari delapan kartu gaya, lalu tekan **Buat GIF & Frame**. Model memproses kelima foto berurutan di thread latar belakang; UI menampilkan tahap dan progres perkiraan.
+5. Setelah lima foto terkumpul, halaman beralih ke layar tersendiri untuk memilih tepat tiga foto dari lima foto tersebut untuk frame. Kelima foto tetap akan diberi style dan digunakan untuk GIF loop.
+6. Konfirmasi pilihan untuk kembali ke halaman kamera. Pilih satu kartu gaya di panel kanan, lalu tekan **Buat GIF & Frame**. Neural style transfer memproses kelima foto berurutan memakai gambar referensi dari kartu yang dipilih; UI menampilkan tahap dan progres perkiraan.
 7. Setelah selesai, pengguna melihat/mengunduh GIF loop berisi 10 frame before/after teracak dan JPG strip berisi tiga foto pilihan.
 
 ## Keputusan produk
 
 - Bahasa UI: Indonesia; nama gaya koleksi dipertahankan agar mudah dicocokkan dengan aset.
 - Arah visual: studio editorial hangat, latar krem, tinta hijau gelap, aksen terakota, tipografi serif untuk headline dan sans-serif untuk kontrol.
-- Breakpoint utama: desktop dua kolom (kamera + pemilih style), ponsel satu kolom.
-- Kursor dikendalikan ujung telunjuk lewat MediaPipe Hands. Mencubit ibu jari dan telunjuk menjalankan klik; saat cubitan, posisi kursor dikunci agar klik tidak bergeser mengikuti jari yang bergerak. Zona gerak aktif memakai 85% dari rentang gerak sebelumnya dan dipetakan ke seluruh halaman agar tombol tepi lebih mudah dijangkau. Indikator tangan hanya tampil sebagai lingkaran di atas halaman; jangan menggambar landmark/garis pada preview kamera. Overlay kursor harus berada di DOM sebelum skrip pelacakan dijalankan.
+- Area photobooth desktop mengisi satu layar dengan acuan 1920×1080: kontainer maksimal 1720 px, grid dua kolom tanpa spasi kosong di kiri (kamera ±62%, panel style ±34%) dan panel style di kanan. Tinggi tidak dipaksa lewat `aspect-ratio`; area kamera memakai sisa tinggi sehingga tidak ada scroll horizontal. Saat lebar ≤1180 px layout kembali satu kolom, dan pada tinggi layar ≤820 px jarak vertikal dirapatkan. Di ponsel tetap satu kolom.
+- Kursor dikendalikan ujung ibu jari lewat MediaPipe Hands. Mencubit ibu jari dan telunjuk menjalankan klik; saat cubitan, posisi kursor dikunci agar klik tidak bergeser dari target. Zona gerak aktif memakai 85% dari rentang gerak sebelumnya dan dipetakan ke seluruh halaman agar tombol tepi lebih mudah dijangkau. Indikator tangan hanya tampil sebagai lingkaran di atas halaman; jangan menggambar landmark/garis pada preview kamera. Overlay kursor harus berada di DOM sebelum skrip pelacakan dijalankan.
 - Setelah foto dijepret/diunggah, preview foto menutupi video kamera yang tetap berjalan di belakangnya supaya MediaPipe tetap menerima frame untuk kontrol tangan.
-- Style yang ditawarkan: Starry Night, Candy, Mosaic, Udnie, The Wave, Ben Giles, La CafÃ©, Flowers. Sumber gambar berada di `data/style-images/`.
+- Style yang ditawarkan: Starry Night, Candy, Mosaic, Udnie, The Wave, Ben Giles, La CafÃ©, Flowers, Batik, Batik 2, dan Mosaic Amber. Mosaic Amber memakai pola mosaik geometris bernuansa amber, ochre, krem, dan cokelat; asetnya `data/style-images/mosaic_amber.jpg`.
 - Engine: neural style transfer Gatys yang sudah ada (`neural_style_transfer.py`), VGG19 (model disiapkan saat startup; representasi style hanya dihitung saat diminta), L-BFGS, inisialisasi content, tinggi 320 px, 200 iterasi per foto. Lima foto diproses berurutan sehingga durasi sekitar lima kali pemrosesan satu foto, ditambah waktu membuat GIF/frame. CLI tetap memakai default lama 1000 iterasi.
 - Seluruh lima sumber foto menjalani neural style transfer secara berurutan menggunakan style yang sama. GIF loop berisi 10 frame (5 asli + 5 hasil style) yang diacak sebagai satu kumpulan tanpa mempertahankan urutan capture/render. JPG frame vertikal menampilkan tiga hasil style yang dipilih pengguna.
 - Ukuran total unggahan dibatasi 60 MB; kamera menghasilkan JPEG untuk lima frame.
@@ -69,4 +69,5 @@ Model VGG yang diperlukan dapat diunduh torchvision saat pertama kali dipakai; u
 - Jangan ubah default optimizer/iterasi CLI hanya untuk mempercepat web demo; gunakan override `iterations` pada konfigurasi web.
 - Jika server dipindahkan dari localhost, tinjau autentikasi, privasi/retensi unggahan, batas ukuran, concurrency GPU/CPU, serta pembatasan akses sebelum membuka akses jaringan.
 - Untuk melatih ulang classifier alfabet, jalankan `python train_sibi_landmarks.py` dengan TensorFlow, MediaPipe, NumPy, dan Pillow tersedia. Script membaca gambar penuh dari split train/val/test, mengambil label dari nama berkas, dan mengabaikan gambar yang tidak terdeteksi MediaPipe.
+- Neural style transfer tidak membutuhkan training ulang saat referensi Batik diganti atau ditambah. Setiap style dipakai sebagai target tekstur dan dioptimalkan saat pengguna membuat hasil photobooth.
 

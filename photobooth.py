@@ -25,6 +25,9 @@ STYLES = [
     {'id': 'ben_giles', 'name': 'Ben Giles', 'mood': 'Dreamlike collage colors'},
     {'id': 'vg_la_cafe', 'name': 'La Café', 'mood': 'Warm post-impressionist city light'},
     {'id': 'flowers_crop', 'name': 'Flowers', 'mood': 'Soft floral color fields'},
+    {'id': 'batik', 'name': 'Batik', 'mood': 'Cream, teal, cobalt and terracotta motifs'},
+    {'id': 'contoh_hijau', 'name': 'Batik 2', 'mood': 'Green batik with cream linework'},
+    {'id': 'mosaic_amber', 'name': 'Mosaic Amber', 'mood': 'Warm amber tiles and earthy contrasts'},
 ]
 JOBS = {}
 JOBS_LOCK = threading.Lock()

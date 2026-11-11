@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;1,500;1,600&display=swap">
-  <link rel="stylesheet" href="{{ url_for('static', filename='photobooth.css', v='15') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='photobooth.css', v='17') }}">
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 </head>
@@ -80,7 +80,7 @@
         <div class="style-grid">
           {% for style in styles %}
           <button class="style-card{% if loop.first %} selected{% endif %}" type="button" data-style="{{ style.id }}" aria-pressed="{{ 'true' if loop.first else 'false' }}">
-            <span class="style-thumb"><img src="{{ url_for('style_image', filename=style.id + '.jpg') if style.id not in ['flowers_crop'] else url_for('style_image', filename=style.id + '.jpg') }}" alt="" loading="lazy"><span class="check">✓</span></span>
+            <span class="style-thumb"><img src="{{ url_for('style_image', filename=style.id + '.jpg') }}?v={{ '2' if style.id == 'batik' else '1' }}" alt="" loading="lazy"><span class="check">✓</span></span>
             <span class="style-name">{{ style.name }}</span><span class="style-mood">{{ style.mood }}</span>
           </button>
           {% endfor %}
@@ -92,7 +92,7 @@
     </section>
 
     <section class="capture-picker" id="capture-picker" hidden aria-live="polite">
-      <div class="section-heading"><span class="step">03</span><div><h2>Pilih 3 foto untuk frame</h2><p>GIF memuat 5 foto asli dan 5 hasil style.</p></div><span class="selection-count" id="selection-count">0 / 3 DIPILIH</span></div>
+      <div class="section-heading"><span class="step">02</span><div><h2>Pilih foto untuk frame</h2><p>Pilih 3 dari 5 foto. GIF tetap memuat semua foto.</p></div><span class="selection-count" id="selection-count">0 / 3 DIPILIH</span></div>
       <div class="capture-grid" id="capture-grid"></div>
       <button class="create-button confirm-selection" id="confirm-selection" type="button" disabled><span>PILIH TEPAT 3 FOTO</span><span class="button-arrow">↗</span></button>
     </section>
@@ -108,11 +108,12 @@
     <div class="toast" id="toast" role="status"></div>
     <footer><span>STUDIO SELA © 2026</span><span>EKSPERIMEN GAYA, SIMPAN KENANGAN.</span></footer>
   </main>
+  <video id="tracking-camera" autoplay playsinline muted aria-hidden="true" tabindex="-1"></video>
   <div class="processing" id="processing" hidden><div class="processing-card"><div class="loader-art"><span></span><span></span><span></span><span></span></div><p class="eyebrow">SEDANG MELUKIS ULANG</p><h2>Sentuhan seni<br><em>butuh sejenak.</em></h2><p id="processing-phase">Menyiapkan job...</p><div class="progress-track"><span id="progress-bar"></span></div><span class="processing-pct" id="processing-pct">0%</span><span class="processing-note">JANGAN TUTUP HALAMAN INI</span></div></div>
   <div id="hand-cursor" class="hand-cursor" style="display: none;">
     <div class="cursor-dot"></div>
     <div class="cursor-ring"></div>
   </div>
-  <script src="{{ url_for('static', filename='photobooth.js', v='17') }}"></script>
+  <script src="{{ url_for('static', filename='photobooth.js', v='19') }}"></script>
 </body>
 </html>
