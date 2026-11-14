@@ -4,11 +4,13 @@ import random
 import threading
 import time
 import uuid
+import zipfile
 
 from flask import Flask, jsonify, render_template, request, send_from_directory
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 from werkzeug.utils import secure_filename
 
+import gdrive_uploader
 import neural_style_transfer as nst
 
 
@@ -27,7 +29,6 @@ STYLES = [
     {'id': 'flowers_crop', 'name': 'Flowers', 'mood': 'Soft floral color fields'},
     {'id': 'batik', 'name': 'Batik', 'mood': 'Cream, teal, cobalt and terracotta motifs'},
     {'id': 'contoh_hijau', 'name': 'Batik 2', 'mood': 'Green batik with cream linework'},
-    {'id': 'mosaic_amber', 'name': 'Mosaic Amber', 'mood': 'Warm amber tiles and earthy contrasts'},
 ]
 JOBS = {}
 JOBS_LOCK = threading.Lock()
@@ -87,7 +88,23 @@ def _make_outputs(job_path, original_paths, styled_paths, selected_indices, gues
               fill='#64705a', font=footer_font)
     jpg_path = os.path.join(job_path, 'studio-sela-frame.jpg')
     frame.save(jpg_path, quality=94, optimize=True)
-    return gif_path, jpg_path
+
+    # Package into ZIP: GIF loop, Frame JPG, and all 10 individual photos (5 original + 5 styled)
+    zip_path = os.path.join(job_path, 'studio-sela-semua-karya.zip')
+    with zipfile.ZipFile(zip_path, 'w', compression=zipfile.ZIP_DEFLATED) as zipf:
+        zipf.write(gif_path, arcname='studio-sela-loop.gif')
+        zipf.write(jpg_path, arcname='studio-sela-frame.jpg')
+        # 5 foto asli
+        for idx, orig_path in enumerate(original_paths):
+            ext = os.path.splitext(orig_path)[1] or '.jpg'
+            zipf.write(orig_path, arcname=f'foto_asli_{idx + 1:02d}{ext}')
+        # 5 foto hasil style (3 foto dengan frame dan 2 foto tanpa frame)
+        for idx, st_path in enumerate(styled_paths):
+            ext = os.path.splitext(st_path)[1] or '.jpg'
+            in_frame = "dengan_frame" if idx in selected_indices else "tanpa_frame"
+            zipf.write(st_path, arcname=f'foto_style_{idx + 1:02d}_{in_frame}{ext}')
+
+    return gif_path, jpg_path, zip_path
 
 
 def run_job(job_id, image_paths, selected_indices, style, guest_name):
@@ -127,11 +144,14 @@ def run_job(job_id, image_paths, selected_indices, style, guest_name):
                 raise RuntimeError('Foto {} selesai tanpa menghasilkan gambar.'.format(index + 1))
             styled_paths.append(os.path.join(result_dir, result_names[0]))
 
-        _update_progress(job_id, 'Menyusun GIF loop dan JPG frame...', 95)
+        _update_progress(job_id, 'Menyusun GIF, Frame JPG, dan paket unduhan...', 95)
         _make_outputs(job_path, image_paths, styled_paths, selected_indices, guest_name)
         with JOBS_LOCK:
             JOBS[job_id].update(status='done', gif='studio-sela-loop.gif',
-                                frame='studio-sela-frame.jpg', progress=100,
+                                frame='studio-sela-frame.jpg',
+                                zip='studio-sela-semua-karya.zip',
+                                guest_name=guest_name,
+                                progress=100,
                                 phase='Selesai')
     except Exception as exc:
         with JOBS_LOCK:
@@ -216,19 +236,52 @@ def job_status(job_id):
     if response.get('status') == 'done':
         response['gif_url'] = '/results/{}/{}'.format(job_id, response['gif'])
         response['frame_url'] = '/results/{}/{}'.format(job_id, response['frame'])
+        if 'zip' in response:
+            response['zip_url'] = '/results/{}/{}'.format(job_id, response['zip'])
+        if 'drive_url' in response:
+            response['drive_url'] = response['drive_url']
+            response['qr_base64'] = response.get('qr_base64')
     return jsonify(response)
+
+
+@app.post('/api/jobs/<job_id>/upload-drive')
+def upload_drive(job_id):
+    with JOBS_LOCK:
+        job = JOBS.get(job_id)
+        if job is None:
+            return jsonify(error='Sesi photobooth tidak ditemukan.'), 404
+        if job.get('status') != 'done':
+            return jsonify(error='Hasil foto belum siap diunggah.'), 409
+        guest_name = job.get('guest_name', 'Tamu')
+        # Return cached drive url if already uploaded
+        if job.get('drive_url') and job.get('qr_base64'):
+            return jsonify({
+                'success': True,
+                'needs_setup': False,
+                'drive_url': job['drive_url'],
+                'qr_base64': job['qr_base64']
+            })
+
+    job_path = os.path.join(JOB_DIR, job_id)
+    result = gdrive_uploader.upload_job_to_drive(job_id, job_path, guest_name)
+    with JOBS_LOCK:
+        if job_id in JOBS and result.get('success'):
+            JOBS[job_id]['drive_url'] = result['drive_url']
+            JOBS[job_id]['qr_base64'] = result['qr_base64']
+    return jsonify(result), (200 if result.get('success') or result.get('needs_setup') else 502)
 
 
 @app.get('/results/<job_id>/<path:filename>')
 def result_image(job_id, filename):
     folder = os.path.join(JOB_DIR, job_id)
     target_path = os.path.join(folder, filename)
+    is_attachment = filename.lower().endswith('.zip')
     if os.path.isfile(target_path):
-        return send_from_directory(os.path.dirname(target_path), os.path.basename(target_path))
+        return send_from_directory(os.path.dirname(target_path), os.path.basename(target_path), as_attachment=is_attachment)
     # Fallback search if filename was requested without its subfolder
     for root, _, files in os.walk(folder):
         if filename in files:
-            return send_from_directory(root, filename)
+            return send_from_directory(root, filename, as_attachment=is_attachment)
     return jsonify(error='Gambar hasil tidak ditemukan.'), 404
 
 

@@ -2,25 +2,33 @@
   const video = document.getElementById('camera');
   const trackingVideo = document.getElementById('tracking-camera');
   const welcomeCameraPlaceholder = document.getElementById('welcome-camera-placeholder');
+  const cameraFrame = document.getElementById('camera-frame');
+  const welcomeCameraFrame = document.getElementById('welcome-camera-frame');
   const preview = document.getElementById('upload-preview');
   const cameraFlash = document.getElementById('camera-flash');
   const placeholder = document.getElementById('camera-placeholder');
-  const shutter = document.getElementById('shutter');
   const countdown = document.getElementById('countdown');
   const fileInput = document.getElementById('photo-upload');
-  const createButton = document.getElementById('create-button');
   const processing = document.getElementById('processing');
   const toast = document.getElementById('toast');
   const handCursor = document.getElementById('hand-cursor');
   const handPill = document.getElementById('hand-pill');
-  const selectedStyle = () => document.querySelector('.style-card.selected').dataset.style;
+  const shotCounter = document.getElementById('shot-counter');
+  const guestGreeting = document.getElementById('guest-greeting');
+
   let cameraStream = null;
   const maxPhotos = 5;
   const framePhotoCount = 3;
   let capturedPhotos = [];
   let selectedForFrame = new Set();
   let captureSequenceActive = false;
-  let guestName = '';
+  let activeStyleId = 'vg_starry_night';
+  let activeStyleName = 'Starry Night';
+  let guestName = 'UNESA';
+  let isDefaultName = true;
+  let currentJobId = null;
+  let currentZipUrl = null;
+
   let sibiModel = null;
   let sibiCandidate = '';
   let sibiCandidateSince = 0;
@@ -29,10 +37,15 @@
   const sibiConfidenceThreshold = 0.72;
   let toastTimer = null;
 
+  // Hand tracking state
   let isPinching = false;
   let pinchCooldown = false;
   let cursorX = window.innerWidth / 2;
   let cursorY = window.innerHeight / 2;
+
+  // ---------------------------------------------------------------------------
+  // SIBI Fingerspelling
+  // ---------------------------------------------------------------------------
 
   async function loadSibiModel() {
     try {
@@ -40,67 +53,73 @@
       if (!response.ok) throw new Error('model unavailable');
       sibiModel = await response.json();
       const status = document.getElementById('sibi-status');
-      status.textContent = 'MODEL SIBI SIAP · 24 HURUF STATIS';
-      document.getElementById('sibi-status-dot').classList.add('active');
+      if (status) status.textContent = 'MODEL SIBI SIAP · 24 HURUF STATIS';
     } catch (_) {
       sibiModel = null;
-      document.getElementById('sibi-status').textContent = 'MODEL SIBI TIDAK TERSEDIA · GUNAKAN KEYBOARD';
+      const status = document.getElementById('sibi-status');
+      if (status) status.textContent = 'MODEL SIBI TIDAK TERSEDIA · GUNAKAN KEYBOARD';
     }
   }
 
   function denseLayer(input, kernel, bias, relu) {
     const output = new Array(bias.length);
-    for (let column = 0; column < bias.length; column++) {
-      let value = bias[column];
-      for (let row = 0; row < input.length; row++) value += input[row] * kernel[row][column];
-      output[column] = relu ? Math.max(0, value) : value;
+    for (let col = 0; col < bias.length; col++) {
+      let val = bias[col];
+      for (let row = 0; row < input.length; row++) val += input[row] * kernel[row][col];
+      output[col] = relu ? Math.max(0, val) : val;
     }
     return output;
   }
 
   function classifySibi(landmarks) {
     if (!sibiModel || !landmarks || landmarks.length !== 21) return null;
-    const xs = landmarks.map(point => point.x);
-    const ys = landmarks.map(point => point.y);
+    const xs = landmarks.map(p => p.x);
+    const ys = landmarks.map(p => p.y);
     const minX = Math.min(...xs);
     const minY = Math.min(...ys);
     const features = [];
-    landmarks.forEach(point => features.push(point.x - minX, point.y - minY));
+    landmarks.forEach(p => features.push(p.x - minX, p.y - minY));
     const weights = sibiModel.layers;
     let values = denseLayer(features, weights[0], weights[1], true);
     const gamma = weights[2];
     const beta = weights[3];
     const mean = weights[4];
     const variance = weights[5];
-    values = values.map((value, index) => ((value - mean[index]) / Math.sqrt(variance[index] + 0.001)) * gamma[index] + beta[index]);
+    values = values.map((val, idx) => ((val - mean[idx]) / Math.sqrt(variance[idx] + 0.001)) * gamma[idx] + beta[idx]);
     values = denseLayer(values, weights[6], weights[7], true);
     values = denseLayer(values, weights[8], weights[9], false);
     const maxLogit = Math.max(...values);
-    const probabilities = values.map(value => Math.exp(value - maxLogit));
-    const total = probabilities.reduce((sum, value) => sum + value, 0);
-    const best = probabilities.reduce((bestIndex, value, index) => value > probabilities[bestIndex] ? index : bestIndex, 0);
-    return {letter: sibiModel.classes[best], confidence: probabilities[best] / total};
+    const probabilities = values.map(val => Math.exp(val - maxLogit));
+    const total = probabilities.reduce((sum, val) => sum + val, 0);
+    const best = probabilities.reduce((bestIdx, val, idx) => val > probabilities[bestIdx] ? idx : bestIdx, 0);
+    return { letter: sibiModel.classes[best], confidence: probabilities[best] / total };
   }
 
   function resetSibiPrediction(message) {
     sibiCandidate = '';
     sibiCandidateSince = 0;
-    document.getElementById('sibi-confidence').textContent = 'menunggu tangan';
-    document.getElementById('sibi-progress-bar').style.width = '0%';
-    document.getElementById('sibi-confirm-hint').textContent = message || 'Tunjukkan satu huruf SIBI; prediksi akan tampil di sini.';
-    if (message) document.getElementById('sibi-status').textContent = message;
+    const conf = document.getElementById('sibi-confidence');
+    const bar = document.getElementById('sibi-progress-bar');
+    const hint = document.getElementById('sibi-confirm-hint');
+    const status = document.getElementById('sibi-status');
+    const cand = document.getElementById('sibi-candidate');
+    if (cand) cand.textContent = '—';
+    if (conf) conf.textContent = 'Menunggu tangan';
+    if (bar) bar.style.width = '0%';
+    if (hint) hint.textContent = message || 'Tahan huruf SIBI 3 detik untuk konfirmasi';
+    if (status && message) status.textContent = message;
   }
 
   function updateSibiPrediction(landmarks) {
     if (document.getElementById('welcome-screen').hidden || !sibiModel) return;
     const prediction = classifySibi(landmarks);
     if (!prediction || prediction.confidence < sibiConfidenceThreshold) {
-      resetSibiPrediction('TANGAN TERDETEKSI · PREDIKSI BELUM YAKIN');
+      resetSibiPrediction('TANGAN TERDETEKSI · POSISIKAN LEBIH JELAS');
       return;
     }
 
     if (prediction.letter === committedSibiPose) {
-      document.getElementById('sibi-status').textContent = `HURUF ${prediction.letter} SUDAH MASUK · UBAH POSE UNTUK HURUF BERIKUTNYA`;
+      document.getElementById('sibi-status').textContent = `HURUF ${prediction.letter} SUDAH MASUK · UBAH POSE UNTUK BERIKUTNYA`;
       return;
     }
     if (committedSibiPose) committedSibiPose = '';
@@ -112,12 +131,12 @@
     }
     const progress = Math.min(1, (now - sibiCandidateSince) / sibiConfirmMs);
     document.getElementById('sibi-candidate').textContent = prediction.letter;
-    document.getElementById('sibi-confidence').textContent = `${Math.round(prediction.confidence * 100)}% yakin`;
+    document.getElementById('sibi-confidence').textContent = `${Math.round(prediction.confidence * 100)}% YAKIN`;
     document.getElementById('sibi-progress-bar').style.width = `${progress * 100}%`;
     document.getElementById('sibi-confirm-hint').textContent = progress >= 1
-      ? 'Huruf masuk. Lepaskan tangan sebentar sebelum mengeja huruf yang sama.'
-      : `Pastikan hurufnya benar · masuk otomatis dalam ${Math.ceil((1 - progress) * 3)} detik`;
-    document.getElementById('sibi-status').textContent = `PREDIKSI ${prediction.letter} · TAHAN POSE UNTUK KONFIRMASI`;
+      ? 'Huruf masuk! Lepas sejenak sebelum huruf yang sama.'
+      : `Tahan: masuk otomatis dalam ${Math.ceil((1 - progress) * 3)} detik`;
+    document.getElementById('sibi-status').textContent = `TERDETEKSI HURUF ${prediction.letter}`;
 
     if (progress >= 1) {
       insertNameText(prediction.letter);
@@ -127,287 +146,522 @@
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Virtual Keyboard & Text Input
+  // ---------------------------------------------------------------------------
+
+  function insertNameText(text) {
+    const input = document.getElementById('guest-name');
+    if (isDefaultName) {
+      input.value = '';
+      isDefaultName = false;
+    }
+    const start = input.selectionStart || 0;
+    const end = input.selectionEnd || 0;
+    input.setRangeText(text, start, end, 'end');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.focus();
+  }
+
+  function setupPhysicalInputHandlers() {
+    const input = document.getElementById('guest-name');
+    if (!input) return;
+    input.addEventListener('keydown', (e) => {
+      // Clear default UNESA placeholder on first letter typed
+      if (isDefaultName && e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        input.value = '';
+        isDefaultName = false;
+      }
+    });
+    input.addEventListener('input', () => {
+      if (input.value !== 'UNESA') {
+        isDefaultName = false;
+      }
+    });
+  }
+
+  function buildVirtualKeyboard() {
+    const keyboard = document.getElementById('virtual-keyboard');
+    if (!keyboard) return;
+    keyboard.replaceChildren();
+
+    const rows = [
+      ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
+      ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L'],
+      ['Z', 'X', 'C', 'V', 'B', 'N', 'M']
+    ];
+
+    rows.forEach(letters => {
+      const rowEl = document.createElement('div');
+      rowEl.className = 'key-row';
+      letters.forEach(letter => {
+        const key = document.createElement('button');
+        key.type = 'button';
+        key.className = 'letter-key';
+        key.textContent = letter;
+        key.addEventListener('click', (e) => {
+          e.preventDefault();
+          insertNameText(letter);
+        });
+        rowEl.appendChild(key);
+      });
+      keyboard.appendChild(rowEl);
+    });
+
+    // Control keys row: HAPUS, SPASI, BERSIHKAN
+    const ctrlRow = document.createElement('div');
+    ctrlRow.className = 'key-row key-controls';
+
+    const hapusBtn = document.createElement('button');
+    hapusBtn.type = 'button';
+    hapusBtn.className = 'function-key key-hapus';
+    hapusBtn.textContent = 'HAPUS';
+    hapusBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const input = document.getElementById('guest-name');
+      if (isDefaultName) {
+        input.value = '';
+        isDefaultName = false;
+        input.focus();
+        return;
+      }
+      const start = input.selectionStart || 0;
+      const end = input.selectionEnd || 0;
+      if (start === end && start > 0) input.setSelectionRange(start - 1, end);
+      input.setRangeText('', input.selectionStart, input.selectionEnd, 'end');
+      input.focus();
+    });
+
+    const spasiBtn = document.createElement('button');
+    spasiBtn.type = 'button';
+    spasiBtn.className = 'function-key key-spasi';
+    spasiBtn.textContent = 'SPASI';
+    spasiBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      insertNameText(' ');
+    });
+
+    const bersihkanBtn = document.createElement('button');
+    bersihkanBtn.type = 'button';
+    bersihkanBtn.className = 'function-key key-bersihkan';
+    bersihkanBtn.textContent = 'BERSIHKAN';
+    bersihkanBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const input = document.getElementById('guest-name');
+      input.value = '';
+      isDefaultName = false;
+      input.focus();
+    });
+
+    ctrlRow.appendChild(hapusBtn);
+    ctrlRow.appendChild(spasiBtn);
+    ctrlRow.appendChild(bersihkanBtn);
+    keyboard.appendChild(ctrlRow);
+  }
+
   function notify(message) {
+    if (!toast) return;
     toast.textContent = message;
     toast.classList.add('show');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => toast.classList.remove('show'), 3200);
   }
 
-  function updateShotCounter() {
-    document.getElementById('shot-counter').textContent = `${capturedPhotos.length} / ${maxPhotos}`;
-  }
-
-  function insertNameText(text) {
-    const input = document.getElementById('guest-name');
-    const start = input.selectionStart || 0;
-    const end = input.selectionEnd || 0;
-    input.setRangeText(text, start, end, 'end');
-    input.dispatchEvent(new Event('input', {bubbles: true}));
-    input.focus();
-  }
-
-  function buildVirtualKeyboard() {
-    const keyboard = document.getElementById('virtual-keyboard');
-    [['QWERTYUIOP'], ['ASDFGHJKL'], ['ZXCVBNM']].forEach(row => {
-      const rowElement = document.createElement('div');
-      rowElement.className = 'key-row';
-      [...row[0]].forEach(letter => {
-        const key = document.createElement('button');
-        key.type = 'button';
-        key.className = 'letter-key';
-        key.textContent = letter;
-        key.addEventListener('click', () => insertNameText(letter));
-        rowElement.appendChild(key);
-      });
-      keyboard.appendChild(rowElement);
-    });
-    const controls = document.createElement('div');
-    controls.className = 'key-row key-controls';
-    [['⌫', 'backspace'], ['SPASI', 'space'], ['BERSIHKAN', 'clear']].forEach(([label, action]) => {
-      const key = document.createElement('button');
-      key.type = 'button';
-      key.className = 'function-key';
-      key.textContent = label;
-      key.addEventListener('click', () => {
-        const input = document.getElementById('guest-name');
-        if (action === 'space') insertNameText(' ');
-        if (action === 'clear') {
-          input.value = '';
-          input.focus();
-        }
-        if (action === 'backspace') {
-          const start = input.selectionStart || 0;
-          const end = input.selectionEnd || 0;
-          if (start === end && start > 0) input.setSelectionRange(start - 1, end);
-          input.setRangeText('', input.selectionStart, input.selectionEnd, 'end');
-          input.focus();
-        }
-      });
-      controls.appendChild(key);
-    });
-    keyboard.appendChild(controls);
-  }
-
-  function updateSelectionCount() {
-    const count = selectedForFrame.size;
-    document.getElementById('selection-count').textContent = `${count} / ${framePhotoCount} DIPILIH`;
-    const confirm = document.getElementById('confirm-selection');
-    confirm.disabled = count !== framePhotoCount;
-    confirm.querySelector('span').textContent = count === framePhotoCount
-      ? 'LANJUTKAN DENGAN 3 FOTO' : `PILIH TEPAT 3 FOTO (${count}/3)`;
-  }
-
-  function renderCapturePicker() {
-    const grid = document.getElementById('capture-grid');
-    grid.replaceChildren();
-    capturedPhotos.forEach((photo, index) => {
-      const card = document.createElement('button');
-      card.type = 'button';
-      card.className = 'capture-choice';
-      card.setAttribute('aria-pressed', selectedForFrame.has(index) ? 'true' : 'false');
-      if (selectedForFrame.has(index)) card.classList.add('selected');
-      card.innerHTML = `<img alt="Foto ${index + 1}" src="${photo.url}"><span class="capture-number">0${index + 1}</span><span class="capture-check">✓</span>`;
-      card.addEventListener('click', () => {
-        if (selectedForFrame.has(index)) {
-          selectedForFrame.delete(index);
-        } else if (selectedForFrame.size < framePhotoCount) {
-          selectedForFrame.add(index);
-        } else {
-          notify('Pilih tepat 3 foto untuk frame.');
-          return;
-        }
-        card.classList.toggle('selected', selectedForFrame.has(index));
-        card.setAttribute('aria-pressed', selectedForFrame.has(index) ? 'true' : 'false');
-        updateSelectionCount();
-      });
-      grid.appendChild(card);
-    });
-    updateSelectionCount();
-  }
-
-  function finishCaptureSet() {
-    if (capturedPhotos.length !== maxPhotos) return;
-    shutter.disabled = true;
-    document.querySelector('.booth-grid').hidden = true;
-    document.getElementById('capture-picker').hidden = false;
-    renderCapturePicker();
-    document.getElementById('capture-picker').scrollIntoView({behavior: 'smooth', block: 'start'});
-  }
-
-  function addUploadedPhotos(files) {
-    const available = maxPhotos - capturedPhotos.length;
-    const validFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
-    validFiles.slice(0, available).forEach(file => {
-      capturedPhotos.push({blob: file, url: URL.createObjectURL(file), name: file.name});
-    });
-    updateShotCounter();
-    if (validFiles.length > available) notify('Sesi ini hanya menerima 5 foto.');
-    if (capturedPhotos.length) {
-      preview.src = capturedPhotos[capturedPhotos.length - 1].url;
-      preview.hidden = false;
-      video.hidden = !cameraStream;
-      if (cameraStream) video.classList.add('tracking-in-background');
-      placeholder.hidden = true;
-    }
-    if (capturedPhotos.length === maxPhotos) finishCaptureSet();
-  }
+  // ---------------------------------------------------------------------------
+  // Camera & Video Setup
+  // ---------------------------------------------------------------------------
 
   async function startCamera() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      document.getElementById('camera-state').lastChild.textContent = ' UNGGAH FOTO';
-      document.getElementById('sibi-status').textContent = 'KAMERA TIDAK TERSEDIA · GUNAKAN KEYBOARD';
-      welcomeCameraPlaceholder.hidden = false;
+      if (welcomeCameraPlaceholder) welcomeCameraPlaceholder.hidden = false;
       return;
     }
     try {
-      cameraStream = await navigator.mediaDevices.getUserMedia({video: {facingMode: 'user'}, audio: false});
+      cameraStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false
+      });
       video.srcObject = cameraStream;
       trackingVideo.srcObject = cameraStream;
-      trackingVideo.play().catch(err => console.warn('Background tracking video play notice:', err));
-      video.play().catch(err => console.warn('Camera preview play notice:', err));
+      trackingVideo.play().catch(err => console.warn('Background tracking video notice:', err));
+      video.play().catch(err => console.warn('Camera preview notice:', err));
       video.hidden = false;
-      welcomeCameraPlaceholder.hidden = true;
-      placeholder.hidden = true;
-      document.getElementById('camera-state').classList.add('active');
-      document.getElementById('sibi-status').textContent = sibiModel
-        ? 'KAMERA LIVE · MODEL SIBI 24 HURUF SIAP' : 'KAMERA LIVE · MODEL SIBI DIPERSIAPKAN';
-      document.getElementById('sibi-status-dot').classList.add('active');
+      if (welcomeCameraPlaceholder) welcomeCameraPlaceholder.hidden = true;
+      if (placeholder) placeholder.hidden = true;
       initMediaPipeHands();
     } catch (_) {
       video.hidden = true;
-      document.getElementById('sibi-status').textContent = 'IZINKAN KAMERA UNTUK INPUT SIBI';
-      document.getElementById('sibi-status-dot').classList.remove('active');
-      welcomeCameraPlaceholder.hidden = false;
+      if (welcomeCameraPlaceholder) welcomeCameraPlaceholder.hidden = false;
     }
   }
 
-  shutter.addEventListener('click', async () => {
-    if (captureSequenceActive || capturedPhotos.length >= maxPhotos) return;
-    if (!cameraStream || video.readyState < 2) {
-      fileInput.click();
-      return;
+  // ---------------------------------------------------------------------------
+  // Screen 1: "DONE" -> Move to Screen 2
+  // ---------------------------------------------------------------------------
+
+  const doneButton = document.getElementById('name-done');
+  doneButton.addEventListener('click', () => {
+    const nameInput = document.getElementById('guest-name');
+    let val = nameInput.value.trim().replace(/\s+/g, ' ').slice(0, 32);
+    if (!val) {
+      val = 'UNESA';
+      nameInput.value = 'UNESA';
     }
+    guestName = val;
+    guestGreeting.textContent = `Halo, ${guestName}`;
+
+    // Seamlessly move camera preview video into Screen 2
+    cameraFrame.prepend(video);
+    video.hidden = !cameraStream;
+    placeholder.hidden = !!cameraStream;
+
+    document.getElementById('welcome-screen').hidden = true;
+    document.getElementById('photobooth-app').hidden = false;
+    notify(`Selamat datang, ${guestName}! Silakan pilih gaya seni untuk mulai jepret.`);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Screen 2: Style Selection & Immediate 5-Photo Burst Capture
+  // ---------------------------------------------------------------------------
+
+  function setupStyleCards() {
+    const styleCards = document.querySelectorAll('.style-card');
+    styleCards.forEach(card => {
+      card.addEventListener('click', () => {
+        if (captureSequenceActive) return;
+        const styleId = card.dataset.style;
+        const styleName = card.dataset.name || card.querySelector('.style-name')?.textContent || styleId;
+        activeStyleId = styleId;
+        activeStyleName = styleName;
+
+        styleCards.forEach(c => {
+          c.classList.remove('selected');
+          c.setAttribute('aria-pressed', 'false');
+        });
+        card.classList.add('selected');
+        card.setAttribute('aria-pressed', 'true');
+
+        // Immediately trigger 5-photo burst capture!
+        startAutoBurstCapture();
+      });
+    });
+  }
+
+  async function startAutoBurstCapture() {
+    if (captureSequenceActive) return;
     captureSequenceActive = true;
-    shutter.disabled = true;
+    capturedPhotos = [];
+    selectedForFrame.clear();
+    shotCounter.textContent = `0 / ${maxPhotos}`;
     preview.hidden = true;
-    video.classList.remove('tracking-in-background');
-    video.hidden = false;
+    video.hidden = !cameraStream;
+
+    notify(`Gaya ${activeStyleName} dipilih! Bersiap di depan kamera...`);
+
     try {
       const canvas = document.getElementById('capture-canvas');
-      for (let shot = capturedPhotos.length; shot < maxPhotos; shot++) {
-        for (const number of ['3', '2', '1']) {
-          countdown.textContent = number;
+      for (let shot = 1; shot <= maxPhotos; shot++) {
+        // 3-2-1 countdown per shot
+        for (const num of ['3', '2', '1']) {
+          countdown.textContent = num;
           countdown.hidden = false;
-          await new Promise(resolve => setTimeout(resolve, 650));
+          await new Promise(r => setTimeout(r, 650));
         }
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        const context = canvas.getContext('2d');
-        context.setTransform(-1, 0, 0, 1, canvas.width, 0);
-        context.drawImage(video, 0, 0);
-        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', .92));
-        if (!blob) throw new Error('Foto tidak berhasil diambil. Coba lagi.');
-        capturedPhotos.push({blob, url: URL.createObjectURL(blob), name: `capture_${shot + 1}.jpg`});
-        updateShotCounter();
+        countdown.hidden = true;
+
+        // Snap photo from video feed
+        canvas.width = video.videoWidth || 1280;
+        canvas.height = video.videoHeight || 720;
+        const ctx = canvas.getContext('2d');
+        ctx.setTransform(-1, 0, 0, 1, canvas.width, 0); // mirror horizontally
+        ctx.drawImage(video, 0, 0);
+        const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.94));
+        if (!blob) throw new Error('Gagal mengambil frame foto.');
+
+        capturedPhotos.push({
+          blob,
+          url: URL.createObjectURL(blob),
+          name: `capture_${shot}.jpg`
+        });
+
+        shotCounter.textContent = `${shot} / ${maxPhotos}`;
+
+        // Flash animation
         cameraFlash.classList.remove('active');
         void cameraFlash.offsetWidth;
         cameraFlash.classList.add('active');
-        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        await new Promise(r => setTimeout(r, 800));
         cameraFlash.classList.remove('active');
       }
-      countdown.hidden = true;
-      preview.src = capturedPhotos[capturedPhotos.length - 1].url;
-      preview.hidden = false;
-      video.classList.add('tracking-in-background');
-      finishCaptureSet();
-    } catch (error) {
-      notify(error.message || 'Tidak bisa mengambil rangkaian foto.');
-      shutter.disabled = false;
+
+      // Finish burst capture: navigate directly to photo picker
+      finishBurstToPicker();
+    } catch (err) {
+      notify(err.message || 'Gagal mengambil 5 foto.');
     } finally {
       captureSequenceActive = false;
       countdown.hidden = true;
     }
-  });
+  }
 
-  fileInput.addEventListener('change', event => {
-    addUploadedPhotos(event.target.files);
-    fileInput.value = '';
-  });
-  document.querySelectorAll('.style-card').forEach(card => card.addEventListener('click', () => {
-    document.querySelectorAll('.style-card').forEach(item => {
-      item.classList.remove('selected');
-      item.setAttribute('aria-pressed', 'false');
+  function finishBurstToPicker() {
+    document.querySelector('.booth-grid').hidden = true;
+    const picker = document.getElementById('capture-picker');
+    picker.hidden = false;
+    renderCapturePicker();
+    picker.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    notify('Foto berhasil diambil! Pilih 3 foto terbaikmu untuk frame.');
+  }
+
+  // ---------------------------------------------------------------------------
+  // Photo Picker (PILIH 3 FOTO) & Auto-Generate
+  // ---------------------------------------------------------------------------
+
+  function renderCapturePicker() {
+    const grid = document.getElementById('capture-grid');
+    grid.replaceChildren();
+
+    capturedPhotos.forEach((photo, idx) => {
+      const choice = document.createElement('button');
+      choice.type = 'button';
+      choice.className = 'capture-choice';
+      if (selectedForFrame.has(idx)) choice.classList.add('selected');
+      choice.innerHTML = `
+        <img alt="Foto ${idx + 1}" src="${photo.url}">
+        <span class="capture-number">0${idx + 1}</span>
+        <span class="capture-check">✓</span>
+      `;
+
+      choice.addEventListener('click', () => {
+        if (selectedForFrame.has(idx)) {
+          selectedForFrame.delete(idx);
+        } else if (selectedForFrame.size < framePhotoCount) {
+          selectedForFrame.add(idx);
+        } else {
+          notify('Kamu sudah memilih 3 foto. Klik foto lain untuk mengganti.');
+          return;
+        }
+
+        choice.classList.toggle('selected', selectedForFrame.has(idx));
+        updatePickerStatus();
+      });
+
+      grid.appendChild(choice);
     });
-    card.classList.add('selected');
-    card.setAttribute('aria-pressed', 'true');
-  }));
 
-  async function poll(jobId) {
-    const response = await fetch(`/api/jobs/${jobId}`);
-    const job = await response.json();
-    if (!response.ok) throw new Error(job.error || 'Sesi photobooth tidak ditemukan.');
-    if (job.status === 'error') throw new Error(job.error || 'Proses foto gagal.');
-    if (job.status === 'done') {
-      document.getElementById('gif-image').src = `${job.gif_url}?t=${Date.now()}`;
-      document.getElementById('gif-download').href = job.gif_url;
-      document.getElementById('frame-image').src = `${job.frame_url}?t=${Date.now()}`;
-      document.getElementById('frame-download').href = job.frame_url;
-      document.getElementById('result-style-name').textContent = job.style;
-      processing.hidden = true;
-      document.getElementById('result-section').hidden = false;
-      document.getElementById('result-section').scrollIntoView({behavior: 'smooth'});
-      return;
-    }
-    // Update progress bar with real percentage from server
-    const pct = job.progress || 0;
-    const bar = document.getElementById('progress-bar');
-    const pctLabel = document.getElementById('processing-pct');
-    const phaseLabel = document.getElementById('processing-phase');
-    if (bar) bar.style.width = pct + '%';
-    if (pctLabel) pctLabel.textContent = pct + '%';
-    if (phaseLabel) phaseLabel.textContent = job.phase || 'Sedang memproses foto...';
-    setTimeout(() => poll(jobId).catch(handleError), 2000);
+    updatePickerStatus();
   }
 
-  function handleError(error) {
-    processing.hidden = true;
-    createButton.disabled = false;
-    notify(error.message || 'Tidak bisa memproses foto.');
+  function updatePickerStatus() {
+    const count = selectedForFrame.size;
+    const badge = document.getElementById('selection-count');
+    const confirmBtn = document.getElementById('confirm-selection');
+    badge.textContent = `${count} / ${framePhotoCount} DIPILIH`;
+
+    if (count === framePhotoCount) {
+      confirmBtn.disabled = false;
+      confirmBtn.innerHTML = `<span>LANJUTKAN & PROSES SENI (${activeStyleName.toUpperCase()})</span> <span class="btn-arrow">➔</span>`;
+    } else {
+      confirmBtn.disabled = true;
+      confirmBtn.innerHTML = `<span>PILIH TEPAT 3 FOTO (${count}/3)</span> <span class="btn-arrow">➔</span>`;
+    }
   }
 
-  createButton.addEventListener('click', async () => {
-    if (capturedPhotos.length !== maxPhotos || selectedForFrame.size !== framePhotoCount) {
-      notify('Siapkan 5 foto dan pilih tepat 3 untuk frame.');
+  const confirmBtn = document.getElementById('confirm-selection');
+  confirmBtn.addEventListener('click', () => {
+    if (selectedForFrame.size !== framePhotoCount) {
+      notify('Silakan pilih tepat 3 foto.');
       return;
     }
-    createButton.disabled = true;
+    // Directly submit to generate artwork with style selected upfront
+    submitCaptureJob();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Generate & Poll Artwork
+  // ---------------------------------------------------------------------------
+
+  async function submitCaptureJob() {
+    document.getElementById('capture-picker').hidden = true;
     document.getElementById('result-section').hidden = true;
     document.getElementById('progress-bar').style.width = '0%';
     document.getElementById('processing-pct').textContent = '0%';
-    document.getElementById('processing-phase').textContent = 'Menyiapkan 5 foto...';
+    document.getElementById('processing-phase').textContent = `Memproses 5 foto dengan gaya ${activeStyleName}...`;
     processing.hidden = false;
+
     try {
       const form = new FormData();
-      capturedPhotos.forEach((photo, index) => {
-        form.append('photos', photo.blob, photo.name || `capture_${index + 1}.jpg`);
+      capturedPhotos.forEach((photo, idx) => {
+        form.append('photos', photo.blob, photo.name || `capture_${idx + 1}.jpg`);
       });
-      form.append('style', selectedStyle());
+      form.append('style', activeStyleId);
       form.append('selected', Array.from(selectedForFrame).sort((a, b) => a - b).join(','));
       form.append('guest_name', guestName);
-      const response = await fetch('/api/captures', {method: 'POST', body: form});
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Foto tidak dapat diproses.');
-      poll(data.job_id).catch(handleError);
-    } catch (error) {
-      handleError(error);
+
+      const res = await fetch('/api/captures', { method: 'POST', body: form });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Gagal memulai pemrosesan foto.');
+
+      currentJobId = data.job_id;
+      pollJob(data.job_id);
+    } catch (err) {
+      processing.hidden = true;
+      document.getElementById('capture-picker').hidden = false;
+      notify(err.message || 'Terjadi kesalahan saat memproses foto.');
     }
-  });
+  }
+
+  async function pollJob(jobId) {
+    try {
+      const res = await fetch(`/api/jobs/${jobId}`);
+      const job = await res.json();
+      if (!res.ok) throw new Error(job.error || 'Sesi tidak ditemukan.');
+
+      if (job.status === 'error') throw new Error(job.error || 'Proses foto gagal.');
+
+      if (job.status === 'done') {
+        currentJobId = jobId;
+        currentZipUrl = job.zip_url || `/results/${jobId}/studio-sela-semua-karya.zip`;
+        document.getElementById('gif-image').src = `${job.gif_url}?t=${Date.now()}`;
+        document.getElementById('frame-image').src = `${job.frame_url}?t=${Date.now()}`;
+        document.getElementById('result-style-name').textContent = job.style;
+
+        processing.hidden = true;
+        document.getElementById('result-section').hidden = false;
+        notify('Karyamu sudah siap! Klik tombol untuk membuka QR Code Google Drive.');
+        return;
+      }
+
+      const pct = job.progress || 0;
+      const bar = document.getElementById('progress-bar');
+      const pctLabel = document.getElementById('processing-pct');
+      const phaseLabel = document.getElementById('processing-phase');
+      if (bar) bar.style.width = `${pct}%`;
+      if (pctLabel) pctLabel.textContent = `${pct}%`;
+      if (phaseLabel) phaseLabel.textContent = job.phase || 'Sedang melukis karya seni...';
+
+      setTimeout(() => pollJob(jobId), 1500);
+    } catch (err) {
+      processing.hidden = true;
+      document.getElementById('capture-picker').hidden = false;
+      notify(err.message || 'Gagal memproses hasil foto.');
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Google Drive Upload & QR Code Modal
+  // ---------------------------------------------------------------------------
+
+  const allDownloadBtn = document.getElementById('all-download');
+  const qrModal = document.getElementById('qr-modal');
+  const qrCloseBtn = document.getElementById('qr-close');
+  const qrLoading = document.getElementById('qr-loading');
+  const qrImageWrap = document.getElementById('qr-image-wrap');
+  const qrCodeImg = document.getElementById('qr-code-img');
+  const qrTakeAgainBtn = document.getElementById('qr-take-again');
+  const qrDirectDownload = document.getElementById('qr-direct-download');
+  const qrSetupNotice = document.getElementById('qr-setup-notice');
+  const qrErrorNotice = document.getElementById('qr-error-notice');
+
+  if (allDownloadBtn) {
+    allDownloadBtn.addEventListener('click', async () => {
+      if (!currentJobId) return;
+      if (qrModal) qrModal.hidden = false;
+      if (qrLoading) qrLoading.hidden = false;
+      if (qrImageWrap) qrImageWrap.hidden = true;
+      if (qrSetupNotice) qrSetupNotice.hidden = true;
+      if (qrErrorNotice) qrErrorNotice.hidden = true;
+      if (qrDirectDownload) {
+        qrDirectDownload.href = currentZipUrl || `/results/${currentJobId}/studio-sela-semua-karya.zip`;
+      }
+
+      try {
+        const res = await fetch(`/api/jobs/${currentJobId}/upload-drive`, { method: 'POST' });
+        const data = await res.json();
+        if (qrLoading) qrLoading.hidden = true;
+        if (!res.ok || !data.success || !data.qr_base64) {
+          if (qrImageWrap) qrImageWrap.hidden = true;
+          if (qrSetupNotice && data.needs_setup) qrSetupNotice.hidden = false;
+          if (qrErrorNotice && !data.needs_setup) {
+            qrErrorNotice.textContent = data.message || data.error || 'Foto tidak berhasil diunggah ke Google Drive.';
+            qrErrorNotice.hidden = false;
+          }
+          notify(data.message || data.error || 'Foto tidak berhasil diunggah ke Google Drive.');
+          return;
+        }
+        if (qrImageWrap) qrImageWrap.hidden = false;
+
+        if (data.qr_base64 && qrCodeImg) {
+          qrCodeImg.src = data.qr_base64;
+        }
+        if (data.needs_setup && qrSetupNotice) {
+          qrSetupNotice.hidden = false;
+        }
+      } catch (err) {
+        if (qrLoading) qrLoading.hidden = true;
+        if (qrImageWrap) qrImageWrap.hidden = true;
+        if (qrErrorNotice) {
+          qrErrorNotice.textContent = 'Gagal mengunggah ke Google Drive: ' + err.message;
+          qrErrorNotice.hidden = false;
+        }
+        notify('Gagal mengunggah ke Google Drive: ' + err.message);
+      }
+    });
+  }
+
+  if (qrCloseBtn && qrModal) {
+    qrCloseBtn.addEventListener('click', () => {
+      qrModal.hidden = true;
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Restart / Reset
+  // ---------------------------------------------------------------------------
+
+  function resetForAnotherPhotoSession() {
+    capturedPhotos.forEach(p => URL.revokeObjectURL(p.url));
+    capturedPhotos = [];
+    selectedForFrame.clear();
+    shotCounter.textContent = `0 / ${maxPhotos}`;
+
+    // Return camera video to Screen 1
+    welcomeCameraFrame.prepend(video);
+
+    document.getElementById('result-section').hidden = true;
+    document.getElementById('capture-picker').hidden = true;
+    if (qrModal) qrModal.hidden = true;
+    document.querySelector('.booth-grid').hidden = false;
+    document.getElementById('photobooth-app').hidden = true;
+    document.getElementById('welcome-screen').hidden = false;
+
+    // Reset styles selection
+    document.querySelectorAll('.style-card').forEach(c => {
+      c.classList.remove('selected');
+      c.setAttribute('aria-pressed', 'false');
+    });
+
+    const nameInput = document.getElementById('guest-name');
+    nameInput.value = 'UNESA';
+    isDefaultName = true;
+    guestName = 'UNESA';
+    nameInput.focus();
+  }
+
+  document.getElementById('start-over').addEventListener('click', resetForAnotherPhotoSession);
+  if (qrTakeAgainBtn) {
+    qrTakeAgainBtn.addEventListener('click', resetForAnotherPhotoSession);
+  }
+
+  // ---------------------------------------------------------------------------
+  // MediaPipe Hands & Full-Page Virtual Mouse Cursor
+  // ---------------------------------------------------------------------------
 
   function initMediaPipeHands() {
     if (typeof Hands === 'undefined') {
-      console.warn('MediaPipe Hands library not loaded yet, retrying in 500ms...');
-      setTimeout(initMediaPipeHands, 500);
+      console.warn('MediaPipe Hands not yet loaded, retrying in 400ms...');
+      setTimeout(initMediaPipeHands, 400);
       return;
     }
 
@@ -418,34 +672,33 @@
 
       hands.setOptions({
         maxNumHands: 1,
-        modelComplexity: 0, // 0 is much faster for real-time webcam tracking
+        modelComplexity: 0,
         minDetectionConfidence: 0.5,
         minTrackingConfidence: 0.5
       });
 
       hands.onResults(onHandResults);
 
-      let isProcessing = false;
+      let isBusy = false;
       async function sendFrame() {
         const source = trackingVideo && trackingVideo.readyState >= 2 && !trackingVideo.paused
           ? trackingVideo : video;
-        if (source && source.readyState >= 2 && !source.paused && !isProcessing) {
-          isProcessing = true;
+        if (source && source.readyState >= 2 && !source.paused && !isBusy) {
+          isBusy = true;
           try {
-            await hands.send({image: source});
+            await hands.send({ image: source });
           } catch (err) {
             console.error('Hands send error:', err);
           } finally {
-            isProcessing = false;
+            isBusy = false;
           }
         }
         requestAnimationFrame(sendFrame);
       }
 
       sendFrame();
-      console.log('MediaPipe Hands initialized successfully.');
     } catch (e) {
-      console.error('Failed to initialize MediaPipe Hands:', e);
+      console.error('Failed to init MediaPipe Hands:', e);
     }
   }
 
@@ -457,14 +710,7 @@
       if (handCursor) handCursor.style.display = 'none';
       if (handCursor) handCursor.classList.remove('pinching');
       document.body.classList.remove('hand-control-active');
-      if (!sibiModel) document.getElementById('sibi-status').textContent = cameraStream
-        ? 'KAMERA LIVE · MODEL SIBI TIDAK TERSEDIA' : 'IZINKAN KAMERA UNTUK INPUT SIBI';
-      else if (!document.getElementById('welcome-screen').hidden) {
-        document.getElementById('sibi-status').textContent = 'MODEL SIBI SIAP · TUNJUKKAN SATU HURUF';
-      }
-      if (handPill) {
-        handPill.classList.remove('active', 'pinching');
-      }
+      if (handPill) handPill.classList.remove('active', 'pinching');
       return;
     }
 
@@ -473,14 +719,14 @@
 
     const landmarks = results.multiHandLandmarks[0];
     updateSibiPrediction(landmarks);
-    const thumbTip = landmarks[4];   // Thumb tip
-    const indexTip = landmarks[8];   // Index finger tip
+
+    const thumbTip = landmarks[4];
+    const indexTip = landmarks[8];
     const dx = thumbTip.x - indexTip.x;
     const dy = thumbTip.y - indexTip.y;
-    const pinchDetected = Math.hypot(dx, dy) < 0.075;
+    const distance = Math.hypot(dx, dy);
+    const pinchDetected = distance < 0.075;
 
-    // Keep the last cursor position while pinching so the thumb/index click
-    // gesture does not move the cursor away from the target.
     if (pinchDetected && !isPinching) {
       isPinching = true;
       if (handCursor) handCursor.classList.add('pinching');
@@ -492,129 +738,68 @@
       if (handPill) handPill.classList.remove('pinching');
     }
 
-    // Map the full camera range to the page so small hand movements have less effect.
+    // Map hand position across the entire browser viewport (1920x1080)
     const clamp01 = (v) => Math.max(0, Math.min(1, v));
-    const handZoneStart = 0.02;
-    const handZoneRange = 0.96;
+    const handZoneStart = 0.05;
+    const handZoneRange = 0.90;
+
     if (!pinchDetected) {
       const normX = clamp01((thumbTip.x - handZoneStart) / handZoneRange);
       const normY = clamp01((thumbTip.y - handZoneStart) / handZoneRange);
 
-      // Mirroring X coordinate because webcam view is flipped horizontally like a mirror
+      // Inverted X because webcam is mirrored
       const rawX = (1 - normX) * window.innerWidth;
       const rawY = normY * window.innerHeight;
 
-      // Stronger smoothing damps camera jitter and makes cursor motion steadier.
-      cursorX += (rawX - cursorX) * 0.18;
-      cursorY += (rawY - cursorY) * 0.18;
+      // Exponential smoothing for natural jitter-free motion
+      cursorX += (rawX - cursorX) * 0.22;
+      cursorY += (rawY - cursorY) * 0.22;
     }
 
     if (handCursor) {
-      handCursor.removeAttribute('hidden');
       handCursor.style.display = 'block';
       handCursor.style.left = `${cursorX}px`;
       handCursor.style.top = `${cursorY}px`;
-    }
-
-    // Auto-scroll page when hand cursor moves near top or bottom edges
-    if (!pinchDetected && cursorY > window.innerHeight - 80) {
-      window.scrollBy({ top: 12, behavior: 'auto' });
-    } else if (!pinchDetected && cursorY < 80) {
-      window.scrollBy({ top: -12, behavior: 'auto' });
     }
   }
 
   function triggerPinchClick(x, y) {
     if (pinchCooldown) return;
     pinchCooldown = true;
-    setTimeout(() => { pinchCooldown = false; }, 350);
+    setTimeout(() => { pinchCooldown = false; }, 320);
 
-    // Find any element underneath the hand cursor
-    const element = document.elementFromPoint(x, y);
-    if (!element) return;
+    const el = document.elementFromPoint(x, y);
+    if (!el) return;
 
-    const clickable = element.closest('button, .style-card, .capture-choice, .upload-button, .download-button, a, input, [role="button"]');
-    const target = clickable || element;
+    const clickable = el.closest('button, .style-card, .capture-choice, a, input, [role="button"]');
+    const target = clickable || el;
 
-    // Send one click to the nearest control. Dispatching on a child and then
-    // calling click() on its parent would toggle selection twice.
-    const mouseEventInit = {
+    const mouseInit = {
       bubbles: true,
       cancelable: true,
       view: window,
       clientX: x,
       clientY: y
     };
-    target.dispatchEvent(new MouseEvent('mousedown', mouseEventInit));
-    target.dispatchEvent(new MouseEvent('mouseup', mouseEventInit));
+
+    target.dispatchEvent(new MouseEvent('mousedown', mouseInit));
+    target.dispatchEvent(new MouseEvent('mouseup', mouseInit));
     if (clickable) {
       clickable.click();
-      clickable.style.transform = 'scale(0.92)';
-      setTimeout(() => {
-        clickable.style.transform = '';
-      }, 180);
+      clickable.style.transform = 'scale(0.94)';
+      setTimeout(() => { clickable.style.transform = ''; }, 160);
     } else {
-      target.dispatchEvent(new MouseEvent('click', mouseEventInit));
+      target.dispatchEvent(new MouseEvent('click', mouseInit));
     }
   }
 
-  document.getElementById('confirm-selection').addEventListener('click', () => {
-    if (selectedForFrame.size !== framePhotoCount) return;
-    document.getElementById('capture-picker').hidden = true;
-    document.querySelector('.booth-grid').hidden = false;
-    createButton.hidden = false;
-    createButton.disabled = false;
-    document.getElementById('edit-selection').hidden = false;
-    window.scrollTo({top: 0, behavior: 'smooth'});
-  });
+  // ---------------------------------------------------------------------------
+  // Initialization
+  // ---------------------------------------------------------------------------
 
-  document.getElementById('edit-selection').addEventListener('click', () => {
-    document.querySelector('.booth-grid').hidden = true;
-    document.getElementById('capture-picker').hidden = false;
-    document.getElementById('capture-picker').scrollIntoView({behavior: 'smooth', block: 'start'});
-  });
-
-  document.getElementById('start-over').addEventListener('click', () => {
-    capturedPhotos.forEach(photo => URL.revokeObjectURL(photo.url));
-    capturedPhotos = [];
-    selectedForFrame = new Set();
-    updateShotCounter();
-    document.getElementById('capture-picker').hidden = true;
-    document.querySelector('.booth-grid').hidden = false;
-    document.getElementById('capture-grid').replaceChildren();
-    document.getElementById('selection-count').textContent = '0 / 3 DIPILIH';
-    document.getElementById('confirm-selection').disabled = true;
-    document.getElementById('confirm-selection').querySelector('span').textContent = 'PILIH TEPAT 3 FOTO (0/3)';
-    createButton.hidden = true;
-    createButton.disabled = false;
-    document.getElementById('edit-selection').hidden = true;
-    shutter.disabled = false;
-    preview.hidden = true;
-    preview.removeAttribute('src');
-    fileInput.value = '';
-    video.classList.remove('tracking-in-background');
-    video.hidden = !cameraStream;
-    placeholder.hidden = !!cameraStream;
-    document.getElementById('result-section').hidden = true;
-    createButton.disabled = false;
-    window.scrollTo({top: 0, behavior: 'smooth'});
-  });
-  document.getElementById('name-form').addEventListener('submit', event => {
-    event.preventDefault();
-    const nameInput = document.getElementById('guest-name');
-    guestName = nameInput.value.trim().replace(/\s+/g, ' ').slice(0, 32);
-    if (!guestName) {
-      nameInput.focus();
-      return;
-    }
-    nameInput.value = guestName;
-    document.getElementById('camera-frame').insertBefore(video, preview);
-    video.hidden = !cameraStream;
-    placeholder.hidden = !!cameraStream;
-    document.getElementById('welcome-screen').hidden = true;
-    document.getElementById('photobooth-app').hidden = false;
-  });
+  setupPhysicalInputHandlers();
   buildVirtualKeyboard();
+  setupStyleCards();
   loadSibiModel();
   startCamera();
 })();

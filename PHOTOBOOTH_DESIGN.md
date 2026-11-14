@@ -1,4 +1,4 @@
-﻿# Studio Sela Photobooth â€” rancangan dan peta implementasi
+# Studio Sela Photobooth â€” rancangan dan peta implementasi
 
 > **Untuk update berikutnya:** baca file ini sebelum mengubah pengalaman photobooth. Perbarui bagian "Keputusan produk" dan "Peta file" jika alur, pilihan style, endpoint, atau konfigurasi model berubah.
 
@@ -8,13 +8,37 @@ Mengubah repo neural style transfer menjadi photobooth web lokal: pengunjung men
 
 ## Alur pengunjung
 
-1. Pengguna mengisi nama (maksimal 32 karakter) lewat keyboard fisik atau keyboard layar, lalu menekan **Done**. Nama akan dicetak di kiri atas JPG frame.
-2. Layar awal meminta izin kamera dan menampilkan preview live. MediaPipe Hands mendeteksi landmark untuk kontrol tangan dan classifier SIBI statis yang dilatih dari dataset lokal.
-3. Setelah halaman photobooth terbuka, kamera terus berjalan; bila kamera tidak tersedia, pengguna tetap bisa memakai keyboard dan memilih gambar dari perangkat.
-4. Tekan shutter untuk mengambil lima foto otomatis, masing-masing dengan hitung mundur tiga detik dan kilatan putih satu detik setelah jepret; alternatifnya, unggah lima foto.
-5. Setelah lima foto terkumpul, halaman beralih ke layar tersendiri untuk memilih tepat tiga foto dari lima foto tersebut untuk frame. Kelima foto tetap akan diberi style dan digunakan untuk GIF loop.
-6. Konfirmasi pilihan untuk kembali ke halaman kamera. Pilih satu kartu gaya di panel kanan, lalu tekan **Buat GIF & Frame**. Neural style transfer memproses kelima foto berurutan memakai gambar referensi dari kartu yang dipilih; UI menampilkan tahap dan progres perkiraan.
-7. Setelah selesai, pengguna melihat/mengunduh GIF loop berisi 10 frame before/after teracak dan JPG strip berisi tiga foto pilihan.
+1. **Layar 1 (Nama + Kamera + SIBI)**:
+   - Pengguna melihat kamera live di sisi kiri (~62% lebar).
+   - Di sisi kanan terdapat 3 kartu bertumpuk: (1) Input NAMAMU (default terisi "UNESA"; jika pengguna mulai mengetik atau menggunakan SIBI maka teks otomatis berganti dari awal, dan jika langsung menekan DONE maka otomatis memakai nama "UNESA"), (2) PREDIKSI SIBI (huruf besar, status keyakinan, bilah progres 3 detik), dan (3) Panduan cara pakai bahasa SIBI.
+   - Di bagian bawah terdapat keyboard layar lengkap (QWERTY, baris kontrol: HAPUS, SPASI, BERSIHKAN) dengan ukuran tombol besar yang mudah dipencet.
+   - Menekan tombol bilah **DONE** (lebar penuh di bagian paling bawah) mengunci nama dan beralih ke Layar 2.
+2. **Layar 2 (Kamera + Style + Cara Pakai - 3 Kolom)**:
+   - Kolom kiri: **CARA PAKAI (user flow)** dengan 4 kartu instruksi (1. Atur posisi, 2. Pilih style, 3. Ambil 5 foto, 4. Pilih 3 foto).
+   - Kolom tengah: **KAMERA (80% frame)** dengan bilah status **AMBIL 5 FOTO 0 / 5** di bawahnya. Tombol shutter merah manual ditiadakan.
+   - Kolom kanan: **PILIH STYLE** dalam grid 2 kolom x 4 baris.
+3. **Trigger Otomatis Jepret Saat Memilih Style**:
+   - Memilih salah satu kartu gaya langsung memicu hitung mundur (3, 2, 1) dan rangkaian 5 jepretan otomatis secara beruntun.
+   - Bilah status memperbarui hitungan foto (`1 / 5` hingga `5 / 5`).
+4. **Pemilihan 3 Foto & Auto-Generate**:
+   - Setelah 5 foto selesai diambil, antarmuka langsung membuka layar pemilihan foto (*capture picker*).
+   - Pengguna memilih tepat 3 dari 5 foto favorit untuk masuk ke dalam frame.
+   - Begitu 3 foto dipilih dan dikonfirmasi, sistem langsung memulai proses neural style transfer menggunakan style yang sudah dipilih di awal, tanpa perlu memilih style ulang atau menekan tombol tambahan.
+5. **Hasil Karya, Unduh Satu Tombol & QR Code Google Drive**:
+   - Menampilkan preview GIF loop dan frame JPG bersanding rapi.
+   - Tombol unduh disatukan menjadi 1 tombol utama: **`UNDUH & DAPATKAN QR CODE GOOGLE DRIVE`**.
+   - Ketika ditekan, muncul popup **QR Code Google Drive**:
+     - Pengunjung memindai (*scan*) QR Code menggunakan kamera ponsel untuk langsung membuka folder Google Drive dan mengunduh seluruh hasil ke ponsel mereka.
+     - QR membuka folder hasil di Google Drive; tombol modal dan tombol hasil mengulang alur foto.
+   - Paket karya yang diunggah ke Google Drive (dan di dalam ZIP):
+     - `studio-sela-loop.gif` (GIF animasi 10 frame)
+     - `studio-sela-frame.jpg` (Frame dengan 3 foto pilihan)
+     - 5 foto asli (`foto_asli_01.jpg` .. `foto_asli_05.jpg`)
+     - 5 foto style (`foto_style_01_dengan_frame.jpg` .. `foto_style_05_tanpa_frame.jpg`, mencakup baik foto yang masuk ke dalam frame maupun yang tidak dimasukkan ke dalam frame)
+     - Total terdapat 10 foto individual + GIF + Frame.
+   - Konfigurasi Google Drive memakai OAuth Desktop: simpan file unduhan OAuth sebagai `client_secret.json` di root proyek. Login Google pertama menghasilkan `token.json` lokal.
+   - Salin `gdrive_config.example.json` menjadi `gdrive_config.json` dan isi `folder_id` opsional dengan folder yang dapat diedit oleh akun OAuth.
+   - Opsi "Foto Lagi" untuk me-reset sesi ke layar awal.
 
 ## Keputusan produk
 

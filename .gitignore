@@ -1,6 +1,11 @@
 .idea
 __pycache__
 .venv/
+client_secret*.json
+token.json
+credentials.json
+service_account.json
+gdrive_config.json
 data/photobooth/
 data/output-images/
 data/sibi/Labeled Official Indonesian Sign Language (SIBI) Alphabet/

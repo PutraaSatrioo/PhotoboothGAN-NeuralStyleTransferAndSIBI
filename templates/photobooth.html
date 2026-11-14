@@ -4,116 +4,321 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f5eee4">
-  <title>Studio Sela — Photobooth Seni</title>
+  <title>Studio Sela Ã¢â‚¬â€ Photobooth Seni</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;1,500;1,600&display=swap">
-  <link rel="stylesheet" href="{{ url_for('static', filename='photobooth.css', v='17') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='photobooth.css', v='23') }}">
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 </head>
 <body>
-  <section class="welcome-screen" id="welcome-screen">
-    <div class="welcome-card">
-      <div class="welcome-heading"><span class="brand-mark">S</span><p class="eyebrow">STUDIO SELA PHOTOBOOTH</p><h1>Siapa yang ada<br><em>di balik potret ini?</em></h1><p class="welcome-copy">Masukkan nama dengan keyboard atau fingerspelling SIBI.</p></div>
-      <div class="welcome-layout">
-        <div class="welcome-camera-column">
-          <div class="welcome-camera-frame">
-            <video id="camera" autoplay playsinline muted hidden></video>
-            <div class="welcome-camera-placeholder" id="welcome-camera-placeholder"><span class="camera-icon">◎</span><strong>Kamera live</strong><span>Izinkan akses kamera untuk SIBI</span></div>
-            <span class="frame-corner corner-tl"></span><span class="frame-corner corner-tr"></span><span class="frame-corner corner-bl"></span><span class="frame-corner corner-br"></span>
-          </div>
-          <div class="sibi-status"><i id="sibi-status-dot"></i><span id="sibi-status">KAMERA SIBI MENUNGGU IZIN</span></div>
-          <p class="sibi-hint">Tunjukkan satu huruf SIBI dan tahan 3 detik. Prediksi mencakup 24 huruf statis; J dan Z gunakan keyboard.</p>
-          <div class="sibi-prediction" id="sibi-prediction" aria-live="polite">
-            <span class="sibi-prediction-label">PREDIKSI SIBI</span>
-            <strong id="sibi-candidate">—</strong>
-            <span id="sibi-confidence">menunggu tangan</span>
-            <div class="sibi-progress"><i id="sibi-progress-bar"></i></div>
-            <span id="sibi-confirm-hint">Tunjukkan satu huruf SIBI; prediksi akan tampil di sini.</span>
-          </div>
-        </div>
-        <div class="welcome-input-column">
-          <form id="name-form">
-            <label for="guest-name">NAMAMU</label>
-            <input id="guest-name" name="guest_name" type="text" maxlength="32" autocomplete="name" placeholder="Contoh: Putra" required>
-            <div class="keyboard-heading"><span>KEYBOARD LAYAR</span><span>atau pakai keyboard fisik</span></div>
-            <div id="virtual-keyboard" class="virtual-keyboard" aria-label="Keyboard layar"></div>
-            <button class="create-button" id="name-done" type="submit"><span>DONE</span><span class="button-arrow">↗</span></button>
-          </form>
-        </div>
-      </div>
-    </div>
-  </section>
-  <main class="shell" id="photobooth-app" hidden>
-    <header class="topbar">
-      <a class="brand" href="/" aria-label="Studio Sela beranda"><span class="brand-mark">S</span><span>STUDIO <b>SELA</b></span></a>
-      <div class="top-badges">
-        <span class="hand-pill" id="hand-pill"><i></i> DETEKSI TANGAN</span>
-        <span class="top-note"><i></i> PHOTOBOOTH SENI</span>
-      </div>
-    </header>
-
-    <section class="intro">
-      <p class="eyebrow">SATU FOTO, JADI KARYA</p>
-      <h1>Wajahmu, dalam<br><em>gaya yang berbeda.</em></h1>
-      <p class="lede">Ambil foto, pilih sentuhan artistik, dan bawa pulang versi unik dirimu.</p>
-    </section>
-
-    <section class="booth-grid" aria-label="Studio photobooth">
-      <div class="capture-column">
-        <div class="section-heading"><span class="step">01</span><div><h2>Siap di depan kamera?</h2><p>Atur posisi, lalu ambil fotomu.</p></div><span class="live-pill" id="camera-state"><i></i> KAMERA</span></div>
-        <div class="camera-frame" id="camera-frame">
-          <img id="upload-preview" alt="Foto yang dipilih" hidden>
-          <span class="camera-flash" id="camera-flash" aria-hidden="true"></span>
-          <div class="camera-placeholder" id="camera-placeholder"><span class="camera-icon">◎</span><strong>Ruang fotomu menunggu</strong><span>Izinkan akses kamera atau unggah foto</span></div>
-          <span class="frame-corner corner-tl"></span><span class="frame-corner corner-tr"></span><span class="frame-corner corner-bl"></span><span class="frame-corner corner-br"></span>
-          <span class="countdown" id="countdown" hidden></span>
-        </div>
-        <canvas id="capture-canvas" hidden></canvas>
-        <div class="camera-actions"><button class="shutter" id="shutter" type="button" aria-label="Ambil lima foto"><span></span></button><span class="shutter-hint">AMBIL 5 FOTO</span><span class="shot-counter" id="shot-counter">0 / 5</span></div>
-        <div class="upload-row"><span>atau pilih hingga 5 foto</span><label class="upload-button" for="photo-upload">PILIH FOTO <span>↗</span></label><input id="photo-upload" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden></div>
-      </div>
-
-      <aside class="style-column">
-        <div class="section-heading"><span class="step">02</span><div><h2>Pilih suasana</h2><p>Setiap gaya punya ceritanya.</p></div></div>
-        <div class="style-grid">
-          {% for style in styles %}
-          <button class="style-card{% if loop.first %} selected{% endif %}" type="button" data-style="{{ style.id }}" aria-pressed="{{ 'true' if loop.first else 'false' }}">
-            <span class="style-thumb"><img src="{{ url_for('style_image', filename=style.id + '.jpg') }}?v={{ '2' if style.id == 'batik' else '1' }}" alt="" loading="lazy"><span class="check">✓</span></span>
-            <span class="style-name">{{ style.name }}</span><span class="style-mood">{{ style.mood }}</span>
-          </button>
-          {% endfor %}
-        </div>
-        <button class="create-button" id="create-button" type="button" hidden><span>BUAT GIF & FRAME</span><span class="button-arrow">↗</span></button>
-        <button class="again-button" id="edit-selection" type="button" hidden>UBAH PILIHAN FOTO</button>
-        <p class="fine-print">Semua 5 foto mendapat style terpilih. Tiga foto pilihan akan masuk ke frame JPG.</p>
-      </aside>
-    </section>
-
-    <section class="capture-picker" id="capture-picker" hidden aria-live="polite">
-      <div class="section-heading"><span class="step">02</span><div><h2>Pilih foto untuk frame</h2><p>Pilih 3 dari 5 foto. GIF tetap memuat semua foto.</p></div><span class="selection-count" id="selection-count">0 / 3 DIPILIH</span></div>
-      <div class="capture-grid" id="capture-grid"></div>
-      <button class="create-button confirm-selection" id="confirm-selection" type="button" disabled><span>PILIH TEPAT 3 FOTO</span><span class="button-arrow">↗</span></button>
-    </section>
-
-    <section class="result-section" id="result-section" hidden aria-live="polite">
-      <div class="result-title"><p class="eyebrow">KARYAMU SUDAH SIAP</p><h2>Inilah versi <em>artistikmu.</em></h2></div>
-      <div class="deliverables">
-        <article class="deliverable"><div class="deliverable-image gif-preview"><img id="gif-image" alt="GIF loop 10 frame, berisi foto asli dan hasil style"></div><p class="eyebrow">GIF LOOP · 10 FRAME ACAK BEFORE + AFTER</p><a id="gif-download" class="download-button" download="studio-sela-loop.gif">UNDUH GIF <span>↓</span></a></article>
-        <article class="deliverable"><div class="deliverable-image frame-preview"><img id="frame-image" alt="Frame JPG berisi tiga foto pilihan"></div><p class="eyebrow">FRAME FOTO · 3 PILIHAN</p><a id="frame-download" class="download-button" download="studio-sela-frame.jpg">UNDUH JPG FRAME <span>↓</span></a></article>
-      </div>
-      <div class="result-footer"><p>STYLE: <strong id="result-style-name"></strong></p><button class="again-button" id="start-over" type="button">MULAI SESI BARU ↗</button></div>
-    </section>
-    <div class="toast" id="toast" role="status"></div>
-    <footer><span>STUDIO SELA © 2026</span><span>EKSPERIMEN GAYA, SIMPAN KENANGAN.</span></footer>
-  </main>
+  <!-- Persistent background video element for MediaPipe Hand Tracking -->
   <video id="tracking-camera" autoplay playsinline muted aria-hidden="true" tabindex="-1"></video>
-  <div class="processing" id="processing" hidden><div class="processing-card"><div class="loader-art"><span></span><span></span><span></span><span></span></div><p class="eyebrow">SEDANG MELUKIS ULANG</p><h2>Sentuhan seni<br><em>butuh sejenak.</em></h2><p id="processing-phase">Menyiapkan job...</p><div class="progress-track"><span id="progress-bar"></span></div><span class="processing-pct" id="processing-pct">0%</span><span class="processing-note">JANGAN TUTUP HALAMAN INI</span></div></div>
+
+  <!-- Orange Full-Screen Hand-Tracking Cursor -->
   <div id="hand-cursor" class="hand-cursor" style="display: none;">
     <div class="cursor-dot"></div>
     <div class="cursor-ring"></div>
   </div>
-  <script src="{{ url_for('static', filename='photobooth.js', v='19') }}"></script>
+
+  <!-- SCREEN 1: 1. Nama + Kamera + SIBI -->
+  <section class="screen-view welcome-screen" id="welcome-screen">
+    <div class="screen-container welcome-container">
+      <div class="welcome-top-row">
+        <!-- Left: Live Camera View -->
+        <div class="welcome-camera-box">
+          <div class="box-badge"><span class="badge-dot"></span> KAMERA (LIVE)</div>
+          <div class="welcome-camera-frame" id="welcome-camera-frame">
+            <video id="camera" autoplay playsinline muted></video>
+            <div class="welcome-camera-placeholder" id="welcome-camera-placeholder">
+              <span class="camera-icon">Ã¢â€”Å½</span>
+              <strong>Kamera Live Sedang Disiapkan</strong>
+              <span>Izinkan akses kamera untuk mendeteksi wajah dan tangan SIBI</span>
+            </div>
+            <span class="frame-corner corner-tl"></span>
+            <span class="frame-corner corner-tr"></span>
+            <span class="frame-corner corner-bl"></span>
+            <span class="frame-corner corner-br"></span>
+          </div>
+        </div>
+
+        <!-- Right: 3 Stacked Panels (Input NAMAMU, PREDIKSI SIBI, Bantuan SIBI) -->
+        <div class="welcome-sidebar">
+          <!-- Card 1: Input NAMAMU -->
+          <div class="sidebar-card input-name-card">
+            <label for="guest-name" class="card-label">INPUT NAMAMU</label>
+            <div class="input-wrapper">
+              <input id="guest-name" name="guest_name" type="text" maxlength="32" autocomplete="off" value="UNESA" placeholder="Contoh: UNESA" required>
+            </div>
+          </div>
+
+          <!-- Card 2: PREDIKSI SIBI: huruf + status -->
+          <div class="sidebar-card sibi-card" id="sibi-prediction" aria-live="polite">
+            <div class="sibi-card-header">
+              <span class="card-label">PREDIKSI SIBI</span>
+              <span class="sibi-status-text" id="sibi-status">KAMERA SIBI MENUNGGU IZIN</span>
+            </div>
+            <div class="sibi-card-body">
+              <div class="sibi-letter-display">
+                <span class="sibi-letter-title">HURUF</span>
+                <strong id="sibi-candidate">Ã¢â‚¬â€</strong>
+              </div>
+              <div class="sibi-metrics">
+                <div class="sibi-conf-row">
+                  <span class="sibi-metric-label">STATUS</span>
+                  <span id="sibi-confidence" class="sibi-metric-val">Menunggu tangan</span>
+                </div>
+                <div class="sibi-progress-track">
+                  <div class="sibi-progress-bar" id="sibi-progress-bar"></div>
+                </div>
+                <span class="sibi-timer-hint" id="sibi-confirm-hint">Tahan huruf SIBI 3 detik untuk konfirmasi</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 3: ? Bantuan: cara pakai bahasa SIBI -->
+          <div class="sidebar-card sibi-help-card">
+            <div class="card-label">? BANTUAN: CARA PAKAI BAHASA SIBI</div>
+            <ul class="sibi-help-list">
+              <li>Posisikan satu tangan di depan kamera dengan jelas.</li>
+              <li>Tahan pose huruf SIBI selama 3 detik hingga terisi otomatis.</li>
+              <li>Mendukung 24 huruf statis (AÃ¢â‚¬â€œI, KÃ¢â‚¬â€œY). Untuk J, Z, atau spasi, gunakan keyboard di bawah.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- Middle: Virtual Keyboard -->
+      <div class="welcome-keyboard-row">
+        <div id="virtual-keyboard" class="virtual-keyboard" aria-label="Keyboard layar"></div>
+      </div>
+
+      <!-- Bottom: DONE Button -->
+      <div class="welcome-bottom-row">
+        <button class="done-bar-button" id="name-done" type="button">
+          <span>DONE</span>
+          <span class="btn-arrow">Ã¢Å¾â€</span>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- SCREEN 2: 2. Kamera + Style + Cara Pakai -->
+  <main class="screen-view photobooth-app" id="photobooth-app" hidden>
+    <div class="screen-container booth-container">
+      <!-- Topbar -->
+      <header class="booth-topbar">
+        <div class="brand">
+          <span class="brand-mark">S</span>
+          <span class="brand-text">STUDIO <b>SELA</b></span>
+        </div>
+        <div class="topbar-center">
+          <span class="guest-greeting" id="guest-greeting">Halo, Sobat Seni</span>
+        </div>
+        <div class="topbar-right">
+          <span class="hand-pill" id="hand-pill"><i></i> KONTROL TANGAN</span>
+          <span class="top-tag">PHOTOBOOTH SENI</span>
+        </div>
+      </header>
+
+      <!-- 3-Column Main Grid -->
+      <section class="booth-grid" aria-label="Studio Photobooth">
+        <!-- Column 1: CARA PAKAI (user flow) -->
+        <aside class="flow-column">
+          <div class="column-header">
+            <h3>CARA PAKAI <small>(user flow)</small></h3>
+          </div>
+          <div class="flow-steps">
+            <div class="flow-card">
+              <span class="flow-number">1</span>
+              <div class="flow-text">
+                <strong>Atur posisi</strong>
+                <p>Berdiri atau duduk rapi menghadap kamera.</p>
+              </div>
+            </div>
+            <div class="flow-card highlight">
+              <span class="flow-number">2</span>
+              <div class="flow-text">
+                <strong>Pilih style</strong>
+                <p>Klik salah satu gaya di kanan untuk langsung foto.</p>
+              </div>
+            </div>
+            <div class="flow-card">
+              <span class="flow-number">3</span>
+              <div class="flow-text">
+                <strong>Ambil 5 foto</strong>
+                <p>Kamera langsung mengambil 5 jepretan otomatis.</p>
+              </div>
+            </div>
+            <div class="flow-card">
+              <span class="flow-number">4</span>
+              <div class="flow-text">
+                <strong>Pilih 3 foto</strong>
+                <p>Pilih 3 foto terbaik untuk dicetak ke frame.</p>
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        <!-- Column 2: KAMERA (80% frame) + Status bar below -->
+        <section class="camera-column">
+          <div class="camera-viewport" id="camera-frame">
+            <img id="upload-preview" alt="Foto terpilih" hidden>
+            <span class="camera-flash" id="camera-flash" aria-hidden="true"></span>
+            <div class="camera-placeholder" id="camera-placeholder">
+              <span class="camera-icon">Ã¢â€”Å½</span>
+              <strong>Ruang Kamera</strong>
+              <span>Kamera aktif</span>
+            </div>
+            <span class="frame-corner corner-tl"></span>
+            <span class="frame-corner corner-tr"></span>
+            <span class="frame-corner corner-bl"></span>
+            <span class="frame-corner corner-br"></span>
+            <span class="countdown" id="countdown" hidden></span>
+          </div>
+
+          <!-- Bottom bar: AMBIL 5 FOTO 0 / 5 -->
+          <div class="shot-status-bar">
+            <span class="shot-status-label">AMBIL 5 FOTO</span>
+            <span class="shot-status-counter" id="shot-counter">0 / 5</span>
+          </div>
+          <canvas id="capture-canvas" hidden></canvas>
+          <input id="photo-upload" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden>
+        </section>
+
+        <!-- Column 3: PILIH STYLE (2x4 Grid) -->
+        <aside class="style-column">
+          <div class="column-header">
+            <h3>PILIH STYLE</h3>
+            <span class="style-subhint">Klik langsung jepret</span>
+          </div>
+          <div class="style-grid" id="style-grid">
+            {% for style in styles %}
+            <button class="style-card" type="button" data-style="{{ style.id }}" data-name="{{ style.name }}" aria-pressed="false">
+              <div class="style-thumb">
+                <img src="{{ url_for('style_image', filename=style.id + '.jpg') }}?v={{ '2' if style.id == 'batik' else '1' }}" alt="{{ style.name }}" loading="lazy">
+                <span class="check-badge">Ã¢Å“â€œ</span>
+              </div>
+              <span class="style-name">{{ style.name }}</span>
+            </button>
+            {% endfor %}
+          </div>
+        </aside>
+      </section>
+
+      <!-- Sub-Screen: Photo Selection (PILIH 3 FOTO) -->
+      <section class="capture-picker" id="capture-picker" hidden aria-live="polite">
+        <div class="picker-header">
+          <div>
+            <h2>PILIH 3 FOTO TERBAIKMU</h2>
+            <p>Pilih 3 dari 5 foto untuk frame JPG. Sistem akan langsung memproses hasil seni begitu 3 foto terpilih.</p>
+          </div>
+          <span class="selection-count-badge" id="selection-count">0 / 3 DIPILIH</span>
+        </div>
+        <div class="capture-grid" id="capture-grid"></div>
+        <div class="picker-actions">
+          <button class="done-bar-button confirm-selection" id="confirm-selection" type="button" disabled>
+            <span>LANJUTKAN DENGAN 3 FOTO (0/3)</span>
+            <span class="btn-arrow">Ã¢Å¾â€</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- Sub-Screen: Hasil Seni (Result Section) -->
+      <section class="result-section" id="result-section" hidden aria-live="polite">
+        <div class="result-title">
+          <p class="result-eyebrow">KARYAMU SUDAH SIAP</p>
+          <h2>Inilah versi <em>artistikmu.</em></h2>
+        </div>
+        <div class="deliverables-grid">
+          <article class="deliverable-card">
+            <div class="deliverable-media gif-preview">
+              <img id="gif-image" alt="GIF loop 10 frame">
+            </div>
+            <p class="deliverable-label">GIF ANIMASI Ã‚Â· BEFORE + AFTER (10 FRAME)</p>
+          </article>
+          <article class="deliverable-card">
+            <div class="deliverable-media frame-preview">
+              <img id="frame-image" alt="Frame 3 foto seni">
+            </div>
+            <p class="deliverable-label">FRAME FOTO Ã‚Â· 3 PILIHAN DENGAN STYLE</p>
+          </article>
+        </div>
+
+        <!-- Satu tombol untuk upload langsung ke Google Drive & tampilkan QR Code -->
+        <div class="download-all-container">
+          <button id="all-download" class="download-all-btn" type="button">
+            <span>SIMPAN KE GOOGLE DRIVE & DAPATKAN QR CODE</span>
+            <span class="btn-arrow">&rarr;</span>
+          </button>
+        </div>
+
+        <div class="result-actions">
+          <p>STYLE TERPILIH: <strong id="result-style-name">Ã¢â‚¬â€</strong></p>
+          <button class="restart-btn" id="start-over" type="button">FOTO LAGI</button>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- Processing / Loader Modal -->
+  <div class="processing-modal" id="processing" hidden>
+    <div class="processing-card">
+      <div class="loader-art">
+        <span></span><span></span><span></span><span></span>
+      </div>
+      <p class="processing-eyebrow">SEDANG MELUKIS ULANG</p>
+      <h2>Sentuhan seni<br><em>butuh sejenak.</em></h2>
+      <p id="processing-phase">Menyiapkan foto...</p>
+      <div class="progress-track">
+        <span id="progress-bar"></span>
+      </div>
+      <span class="processing-pct" id="processing-pct">0%</span>
+      <span class="processing-note">MOHON TUNGGU, JANGAN TUTUP HALAMAN</span>
+    </div>
+  </div>
+
+  <!-- QR Code & Google Drive Modal -->
+  <div class="qr-modal" id="qr-modal" hidden>
+    <div class="qr-modal-card">
+      <button class="qr-close-btn" id="qr-close" type="button" aria-label="Tutup">Ã¢Å“â€¢</button>
+      <div class="qr-header">
+        <span class="qr-badge">GOOGLE DRIVE CLOUD</span>
+        <h2>Scan QR Code</h2>
+        <p>Arahkan kamera HP ke QR Code di bawah untuk membuka dan mengunduh seluruh fotomu di Google Drive.</p>
+      </div>
+
+      <div class="qr-display-area">
+        <div class="qr-spinner-wrap" id="qr-loading">
+          <div class="qr-spinner"></div>
+          <span>Mengunggah foto ke Google Drive...</span>
+        </div>
+        <div class="qr-image-wrap" id="qr-image-wrap" hidden>
+          <img id="qr-code-img" src="" alt="QR Code Google Drive">
+          <span class="qr-scan-hint">Pindai dengan kamera ponsel untuk unduh ke HP</span>
+        </div>
+      </div>
+
+      <div class="qr-info-alert" id="qr-setup-notice" hidden>
+        <strong>Info Pengelola:</strong>
+        <span>Letakkan OAuth Client ID jenis Desktop sebagai <code>client_secret.json</code> di root proyek. Saat pertama kali mengunggah, masuk ke akun Google dan izinkan akses Drive. Folder tujuan pada <code>gdrive_config.json</code> harus dapat diedit oleh akun Google tersebut.</span>
+      </div>
+
+      <div class="qr-info-alert" id="qr-error-notice" role="alert" hidden></div>
+
+      <div class="qr-actions">
+        <button id="qr-take-again" type="button" class="btn-open-drive">
+          <span>FOTO LAGI</span>
+          <span class="btn-arrow">&rarr;</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div class="toast" id="toast" role="status"></div>
+
+  <script src="{{ url_for('static', filename='photobooth.js', v='24') }}"></script>
 </body>
 </html>
