@@ -43,6 +43,29 @@
   let cursorX = window.innerWidth / 2;
   let cursorY = window.innerHeight / 2;
 
+  function detectMobileDevice() {
+    const byWidth = window.matchMedia('(max-width: 900px)').matches;
+    const byTouch = window.matchMedia('(pointer: coarse)').matches && window.innerWidth <= 1024;
+    const byUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent || '');
+    return byWidth || byTouch || byUA;
+  }
+
+  let isMobile = detectMobileDevice();
+  document.body.classList.toggle('is-mobile', isMobile);
+
+  function loadMediaPipeScripts() {
+    if (isMobile || document.getElementById('mp-hands-script')) return;
+    const s1 = document.createElement('script');
+    s1.src = 'https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js';
+    s1.crossOrigin = 'anonymous';
+    const s2 = document.createElement('script');
+    s2.id = 'mp-hands-script';
+    s2.src = 'https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js';
+    s2.crossOrigin = 'anonymous';
+    document.head.appendChild(s1);
+    document.head.appendChild(s2);
+  }
+
   // ---------------------------------------------------------------------------
   // SIBI Fingerspelling
   // ---------------------------------------------------------------------------
@@ -283,18 +306,23 @@
       return;
     }
     try {
+      const videoConstraints = isMobile
+        ? { facingMode: 'user', width: { ideal: 960 }, height: { ideal: 720 } }
+        : { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } };
       cameraStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: videoConstraints,
         audio: false
       });
       video.srcObject = cameraStream;
-      trackingVideo.srcObject = cameraStream;
-      trackingVideo.play().catch(err => console.warn('Background tracking video notice:', err));
       video.play().catch(err => console.warn('Camera preview notice:', err));
       video.hidden = false;
       if (welcomeCameraPlaceholder) welcomeCameraPlaceholder.hidden = true;
       if (placeholder) placeholder.hidden = true;
-      initMediaPipeHands();
+      if (!isMobile) {
+        trackingVideo.srcObject = cameraStream;
+        trackingVideo.play().catch(err => console.warn('Background tracking video notice:', err));
+        initMediaPipeHands();
+      }
     } catch (err) {
       video.hidden = true;
       const messages = {
@@ -305,14 +333,23 @@
         AbortError: 'Kamera gagal dimulai. Periksa koneksi kamera lalu coba lagi.',
         SecurityError: 'Browser memblokir akses kamera. Buka halaman melalui localhost atau 127.0.0.1.'
       };
+      const errMsg = messages[err.name] || `Kesalahan kamera (${err.name || 'tidak diketahui'}). Periksa izin dan sambungan kamera.`;
       if (statusTitle) statusTitle.textContent = 'Kamera belum bisa dibuka';
-      if (statusMessage) statusMessage.textContent = messages[err.name] || `Kesalahan kamera (${err.name || 'tidak diketahui'}). Periksa izin dan sambungan kamera.`;
+      if (statusMessage) statusMessage.textContent = errMsg;
       if (retryButton) retryButton.hidden = false;
       if (welcomeCameraPlaceholder) welcomeCameraPlaceholder.hidden = false;
+      if (placeholder) {
+        placeholder.hidden = false;
+        const pStrong = placeholder.querySelector('strong');
+        const pSpan = placeholder.querySelector('span:not(.camera-icon)');
+        if (pStrong) pStrong.textContent = 'Kamera belum bisa dibuka (ketuk untuk coba lagi)';
+        if (pSpan) pSpan.textContent = errMsg;
+      }
     }
   }
 
   document.getElementById('camera-retry')?.addEventListener('click', startCamera);
+  placeholder?.addEventListener('click', () => { if (!cameraStream) startCamera(); });
 
   // ---------------------------------------------------------------------------
   // Screen 1: "DONE" -> Move to Screen 2
@@ -388,13 +425,18 @@
         }
         countdown.hidden = true;
 
-        // Snap photo from video feed
-        canvas.width = video.videoWidth || 1280;
-        canvas.height = video.videoHeight || 720;
+        // Snap photo from video feed (cap resolution on mobile/serverless to keep upload fast & under 4.5MB)
+        const srcW = video.videoWidth || (isMobile ? 960 : 1280);
+        const srcH = video.videoHeight || 720;
+        const maxCaptureW = isMobile ? 960 : 1280;
+        const scale = srcW > maxCaptureW ? maxCaptureW / srcW : 1;
+        canvas.width = Math.round(srcW * scale);
+        canvas.height = Math.round(srcH * scale);
         const ctx = canvas.getContext('2d');
         ctx.setTransform(-1, 0, 0, 1, canvas.width, 0); // mirror horizontally
-        ctx.drawImage(video, 0, 0);
-        const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.94));
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const jpegQuality = isMobile ? 0.86 : 0.92;
+        const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', jpegQuality));
         if (!blob) throw new Error('Gagal mengambil frame foto.');
 
         capturedPhotos.push({
@@ -669,27 +711,45 @@
   // Restart / Reset
   // ---------------------------------------------------------------------------
 
+  function enterMobileDirectMode() {
+    guestName = 'UNESA';
+    if (guestGreeting) guestGreeting.textContent = 'Halo, Sobat Seni';
+    if (handPill) handPill.hidden = true;
+    if (handCursor) handCursor.style.display = 'none';
+    cameraFrame.prepend(video);
+    video.hidden = !cameraStream;
+    placeholder.hidden = !!cameraStream;
+    document.getElementById('welcome-screen').hidden = true;
+    document.getElementById('photobooth-app').hidden = false;
+  }
+
   function resetForAnotherPhotoSession() {
     capturedPhotos.forEach(p => URL.revokeObjectURL(p.url));
     capturedPhotos = [];
     selectedForFrame.clear();
     shotCounter.textContent = `0 / ${maxPhotos}`;
 
-    // Return camera video to Screen 1
-    welcomeCameraFrame.prepend(video);
-
     document.getElementById('result-section').hidden = true;
     document.getElementById('capture-picker').hidden = true;
     if (qrModal) qrModal.hidden = true;
     document.querySelector('.booth-grid').hidden = false;
-    document.getElementById('photobooth-app').hidden = true;
-    document.getElementById('welcome-screen').hidden = false;
 
     // Reset styles selection
     document.querySelectorAll('.style-card').forEach(c => {
       c.classList.remove('selected');
       c.setAttribute('aria-pressed', 'false');
     });
+
+    if (isMobile) {
+      enterMobileDirectMode();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
+    // Return camera video to Screen 1 on desktop/laptop
+    welcomeCameraFrame.prepend(video);
+    document.getElementById('photobooth-app').hidden = true;
+    document.getElementById('welcome-screen').hidden = false;
 
     const nameInput = document.getElementById('guest-name');
     nameInput.value = 'UNESA';
@@ -846,9 +906,14 @@
   // Initialization
   // ---------------------------------------------------------------------------
 
-  setupPhysicalInputHandlers();
-  buildVirtualKeyboard();
   setupStyleCards();
-  loadSibiModel();
+  if (isMobile) {
+    enterMobileDirectMode();
+  } else {
+    loadMediaPipeScripts();
+    setupPhysicalInputHandlers();
+    buildVirtualKeyboard();
+    loadSibiModel();
+  }
   startCamera();
 })();
