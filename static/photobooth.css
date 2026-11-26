@@ -1789,19 +1789,12 @@ body.hand-control-active * {
     font-family: var(--serif);
     font-size: 38px;
     line-height: 1.15;
-    margin: 0;
+    margin: 0 0 18px 0;
     color: var(--ink);
   }
 
   .mobile-welcome-content h1 em {
     color: var(--orange);
-  }
-
-  .mobile-welcome-desc {
-    font-size: 13.5px;
-    color: var(--muted);
-    line-height: 1.5;
-    margin: 4px 0 18px;
   }
 
   .mobile-start-btn {
@@ -2062,6 +2055,22 @@ body.hand-control-active * {
   .style-column {
     order: 2;
     width: 100%;
+    animation: mobileStepFadeIn 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .camera-column {
+    animation: mobileStepFadeIn 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  @keyframes mobileStepFadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 
   .style-grid {
@@ -2074,6 +2083,32 @@ body.hand-control-active * {
 
   .style-card {
     padding: 10px;
+    animation: mobileStyleCardIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: calc(var(--card-idx, 0) * 32ms);
+    transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  @keyframes mobileStyleCardIn {
+    from {
+      opacity: 0;
+      transform: translateY(14px) scale(0.95);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  .style-grid.style-choosing .style-card:not(.style-popping) {
+    opacity: 0.42;
+    transform: scale(0.95);
+  }
+
+  .style-card.style-popping {
+    transform: scale(1.05);
+    border-color: var(--orange);
+    box-shadow: 0 10px 26px rgba(224, 94, 54, 0.28);
+    z-index: 5;
   }
 
   .style-name {

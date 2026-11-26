@@ -382,7 +382,9 @@
 
   function setupStyleCards() {
     const styleCards = document.querySelectorAll('.style-card');
-    styleCards.forEach(card => {
+    const styleGrid = document.getElementById('style-grid');
+    styleCards.forEach((card, idx) => {
+      card.style.setProperty('--card-idx', idx);
       card.addEventListener('click', () => {
         if (captureSequenceActive) return;
         const styleId = card.dataset.style;
@@ -391,14 +393,19 @@
         activeStyleName = styleName;
 
         styleCards.forEach(c => {
-          c.classList.remove('selected');
+          c.classList.remove('selected', 'style-popping');
           c.setAttribute('aria-pressed', 'false');
         });
-        card.classList.add('selected');
+        card.classList.add('selected', 'style-popping');
         card.setAttribute('aria-pressed', 'true');
 
         if (isMobile) {
-          openMobileCameraStep();
+          if (styleGrid) styleGrid.classList.add('style-choosing');
+          setTimeout(() => {
+            card.classList.remove('style-popping');
+            if (styleGrid) styleGrid.classList.remove('style-choosing');
+            openMobileCameraStep();
+          }, 260);
           return;
         }
 
@@ -444,7 +451,6 @@
 
   function openMobileCameraStep() {
     setMobileStep('camera');
-    notify(`Gaya ${activeStyleName} dipilih! Tekan tombol FOTO di bawah kamera untuk mulai.`);
   }
 
   async function startAutoBurstCapture() {
@@ -456,7 +462,9 @@
     preview.hidden = true;
     video.hidden = !cameraStream;
 
-    notify(`Gaya ${activeStyleName} dipilih! Bersiap di depan kamera...`);
+    if (!isMobile) {
+      notify(`Gaya ${activeStyleName} dipilih! Bersiap di depan kamera...`);
+    }
 
     try {
       const canvas = document.getElementById('capture-canvas');
@@ -509,9 +517,6 @@
       countdown.hidden = true;
       const camColumn = document.getElementById('camera-column');
       if (camColumn) camColumn.classList.remove('mobile-capture-fullscreen', 'mobile-manual-fullscreen');
-      if (document.fullscreenElement && document.exitFullscreen) {
-        document.exitFullscreen().catch(() => {});
-      }
     }
   }
 
@@ -790,12 +795,7 @@
   document.getElementById('mobile-fullscreen-btn')?.addEventListener('click', () => {
     const camColumn = document.getElementById('camera-column');
     if (!camColumn) return;
-    const isFull = camColumn.classList.toggle('mobile-manual-fullscreen');
-    if (isFull && document.documentElement.requestFullscreen && !document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {});
-    } else if (!isFull && document.fullscreenElement && document.exitFullscreen) {
-      document.exitFullscreen().catch(() => {});
-    }
+    camColumn.classList.toggle('mobile-manual-fullscreen');
   });
 
   document.getElementById('mobile-shutter-btn')?.addEventListener('click', () => {
