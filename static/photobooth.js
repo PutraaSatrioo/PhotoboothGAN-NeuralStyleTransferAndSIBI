@@ -521,12 +521,17 @@
   }
 
   function finishBurstToPicker() {
+    if (isMobile) {
+      document.body.dataset.mobileStep = 'picker';
+    }
     document.querySelector('.booth-grid').hidden = true;
     const picker = document.getElementById('capture-picker');
     picker.hidden = false;
     renderCapturePicker();
     picker.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    notify('Foto berhasil diambil! Pilih 3 foto terbaikmu untuk frame.');
+    if (!isMobile) {
+      notify('Foto berhasil diambil! Pilih 3 foto terbaikmu untuk frame.');
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -661,8 +666,13 @@
     document.getElementById('result-style-name').textContent = job.style;
 
     processing.hidden = true;
+    if (isMobile) {
+      document.body.dataset.mobileStep = 'result';
+    }
     document.getElementById('result-section').hidden = false;
-    notify('Karyamu sudah siap! Klik tombol untuk membuka QR Code Google Drive.');
+    if (!isMobile) {
+      notify('Karyamu sudah siap! Klik tombol untuk membuka QR Code Google Drive.');
+    }
   }
 
   async function pollJob(jobId) {
@@ -792,14 +802,43 @@
     setMobileStep('style');
   });
 
+  function requestTrueFullscreen() {
+    const docEl = document.documentElement;
+    const req = docEl.requestFullscreen || docEl.webkitRequestFullscreen || docEl.msRequestFullscreen;
+    if (req && !document.fullscreenElement && !document.webkitFullscreenElement) {
+      try {
+        const p = req.call(docEl, { navigationUI: 'hide' });
+        if (p && typeof p.catch === 'function') p.catch(() => {});
+      } catch (_) {}
+    }
+  }
+
+  function exitTrueFullscreen() {
+    const exit = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
+    if (exit && (document.fullscreenElement || document.webkitFullscreenElement)) {
+      try {
+        const p = exit.call(document);
+        if (p && typeof p.catch === 'function') p.catch(() => {});
+      } catch (_) {}
+    }
+  }
+
   document.getElementById('mobile-fullscreen-btn')?.addEventListener('click', () => {
     const camColumn = document.getElementById('camera-column');
     if (!camColumn) return;
-    camColumn.classList.toggle('mobile-manual-fullscreen');
+    const isNowFull = !(document.fullscreenElement || document.webkitFullscreenElement);
+    if (isNowFull) {
+      requestTrueFullscreen();
+      camColumn.classList.add('mobile-manual-fullscreen');
+    } else {
+      exitTrueFullscreen();
+      camColumn.classList.remove('mobile-manual-fullscreen');
+    }
   });
 
   document.getElementById('mobile-shutter-btn')?.addEventListener('click', () => {
     if (captureSequenceActive) return;
+    requestTrueFullscreen();
     const camColumn = document.getElementById('camera-column');
     if (camColumn) {
       camColumn.classList.remove('mobile-manual-fullscreen');

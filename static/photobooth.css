@@ -588,12 +588,12 @@ body.hand-control-active * {
 .brand-mark {
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   background: var(--ink);
   color: var(--paper);
-  font: italic 18px var(--serif);
-  border-radius: 50%;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(34, 37, 32, 0.16);
 }
 
 .brand-text b {
@@ -1050,7 +1050,17 @@ body.hand-control-active * {
 
 .capture-choice.selected {
   border-color: var(--orange);
-  box-shadow: 0 0 0 2px var(--orange);
+  box-shadow: 0 0 0 2px var(--orange), 0 8px 20px rgba(224, 94, 54, 0.22);
+  animation: selectedPhotoWiggle 0.48s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+@keyframes selectedPhotoWiggle {
+  0%   { transform: scale(1) rotate(0deg); }
+  20%  { transform: scale(1.03) rotate(-2.2deg); }
+  45%  { transform: scale(1.03) rotate(2.2deg); }
+  70%  { transform: scale(1.015) rotate(-1.2deg); }
+  85%  { transform: scale(1.005) rotate(0.8deg); }
+  100% { transform: scale(1) rotate(0deg); }
 }
 
 .capture-number {
@@ -1328,13 +1338,62 @@ body.hand-control-active * {
   position: fixed;
   inset: 0;
   z-index: 10000;
-  background: rgba(245, 238, 228, 0.94);
+  background: linear-gradient(125deg, #f5eee4 0%, #fce8dc 35%, #eef2e6 70%, #f5eee4 100%);
+  background-size: 260% 260%;
+  animation: processingBgFlow 6s ease-in-out infinite;
   display: grid;
   place-items: center;
   padding: 24px;
+  overflow: hidden;
+}
+
+.processing-modal::before,
+.processing-modal::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(48px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.processing-modal::before {
+  width: 340px;
+  height: 340px;
+  top: -80px;
+  left: -80px;
+  background: radial-gradient(circle, rgba(224, 94, 54, 0.24) 0%, rgba(224, 94, 54, 0) 70%);
+  animation: processingOrbDriftA 5.5s ease-in-out infinite alternate;
+}
+
+.processing-modal::after {
+  width: 380px;
+  height: 380px;
+  bottom: -100px;
+  right: -90px;
+  background: radial-gradient(circle, rgba(124, 170, 114, 0.26) 0%, rgba(225, 178, 112, 0.18) 45%, rgba(124, 170, 114, 0) 72%);
+  animation: processingOrbDriftB 6.5s ease-in-out infinite alternate;
+}
+
+@keyframes processingBgFlow {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes processingOrbDriftA {
+  from { transform: translate(0, 0) scale(0.95); }
+  to   { transform: translate(75px, 65px) scale(1.18); }
+}
+
+@keyframes processingOrbDriftB {
+  from { transform: translate(0, 0) scale(1); }
+  to   { transform: translate(-80px, -60px) scale(1.22); }
 }
 
 .processing-card {
+  position: relative;
+  z-index: 1;
   text-align: center;
   max-width: 420px;
 }
@@ -1848,6 +1907,28 @@ body.hand-control-active * {
     display: none !important;
   }
 
+  body[data-mobile-step="camera"] {
+    height: 100dvh;
+    max-height: 100dvh;
+    overflow: hidden !important;
+    overscroll-behavior: none;
+  }
+
+  body[data-mobile-step="camera"] .photobooth-app,
+  body[data-mobile-step="camera"] .booth-container {
+    height: 100dvh;
+    max-height: 100dvh;
+    min-height: 100dvh;
+    padding-bottom: 10px;
+    overflow: hidden;
+  }
+
+  body[data-mobile-step="camera"] .booth-grid {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+
   body[data-mobile-step="camera"] .style-column {
     display: none !important;
   }
@@ -1855,10 +1936,13 @@ body.hand-control-active * {
   .camera-column {
     order: 1;
     width: 100%;
-    gap: 10px;
+    flex: 1 1 0;
+    min-height: 0;
+    gap: 8px;
   }
 
   .mobile-camera-topbar {
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -1888,12 +1972,13 @@ body.hand-control-active * {
     padding: 6px 12px;
   }
 
-  /* Camera almost fills the mobile screen */
+  /* Camera fits exact remaining viewport height without vertical scroll */
   .camera-viewport {
     width: 100%;
-    height: calc(100dvh - 235px);
-    min-height: 360px;
-    max-height: 76dvh;
+    flex: 1 1 0;
+    min-height: 0;
+    height: auto;
+    max-height: none;
     border-radius: 10px;
     transition: transform 0.25s ease, border-radius 0.25s ease;
   }
@@ -1903,16 +1988,18 @@ body.hand-control-active * {
   }
 
   .shot-status-bar {
-    height: 40px;
+    flex: 0 0 auto;
+    height: 38px;
     padding: 0 14px;
   }
 
   /* Mobile Bottom Controls below camera: [Full Screen small] [Shutter center] [Empty right] */
   .mobile-camera-controls {
+    flex: 0 0 auto;
     display: grid;
     grid-template-columns: 1fr auto 1fr;
     align-items: center;
-    padding: 4px 10px 6px;
+    padding: 2px 10px 4px;
   }
 
   .mobile-ctrl-left {

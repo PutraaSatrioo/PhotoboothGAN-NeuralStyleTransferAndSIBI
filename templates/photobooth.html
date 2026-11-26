@@ -4,11 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f5eee4">
-  <title>Studio Sela &mdash; Photobooth Seni</title>
+  <title>Pixora &mdash; Photobooth Seni AI</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23222520'/%3E%3Cpath d='M20 7h-8l-2 3H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h20a2 2 0 0 0 2-2V12a2 2 0 0 0-2-2h-4l-2-3z' fill='none' stroke='%23f5eee4' stroke-width='2' stroke-linejoin='round'/%3E%3Ccircle cx='16' cy='17.5' r='4.2' fill='%23e05e36'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;1,500;1,600&display=swap">
-  <link rel="stylesheet" href="{{ url_for('static', filename='photobooth.css', v='31') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='photobooth.css', v='32') }}">
 </head>
 <body>
   <!-- Persistent background video element for MediaPipe Hand Tracking -->
@@ -109,8 +110,8 @@
       <div class="loader-art mobile-welcome-art" aria-hidden="true">
         <span></span><span></span><span></span><span></span>
       </div>
-      <p class="mobile-welcome-eyebrow">STUDIO SELA &middot; PHOTOBOOTH</p>
-      <h1>Selamat datang<br><em>di Studio Sela.</em></h1>
+      <p class="mobile-welcome-eyebrow">PIXORA &middot; PHOTOBOOTH</p>
+      <h1>Selamat datang<br><em>di Pixora.</em></h1>
       <button class="mobile-start-btn" id="mobile-start-btn" type="button">
         <span>MULAI</span>
         <span class="btn-arrow">&rarr;</span>
@@ -124,8 +125,10 @@
       <!-- Topbar -->
       <header class="booth-topbar">
         <div class="brand">
-          <span class="brand-mark">S</span>
-          <span class="brand-text">STUDIO <b>SELA</b></span>
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3.5" fill="#e05e36" stroke="none"/></svg>
+          </span>
+          <span class="brand-text"><b>PIXORA</b></span>
         </div>
         <div class="topbar-center">
           <span class="guest-greeting" id="guest-greeting">Halo, Sobat Seni</span>
