@@ -141,12 +141,15 @@ def _get_frame_template():
 
 
 def _make_music_video(job_path, gif_path):
+    if os.environ.get('MUSIC_VIDEO_ENABLED', 'false').strip().lower() not in ('1', 'true', 'yes'):
+        return None
     music_paths = []
-    for folder, _, filenames in os.walk(MUSIC_DIR):
-        music_paths.extend(os.path.join(folder, name) for name in filenames
-                           if name.lower().endswith(('.wav', '.mp3', '.m4a', '.aac', '.ogg', '.flac')))
+    if os.path.isdir(MUSIC_DIR):
+        for folder, _, filenames in os.walk(MUSIC_DIR):
+            music_paths.extend(os.path.join(folder, name) for name in filenames
+                               if name.lower().endswith(('.wav', '.mp3', '.m4a', '.aac', '.ogg', '.flac')))
     if not music_paths:
-        raise RuntimeError('Tidak ada file musik yang didukung di folder music/.')
+        return None
 
     try:
         import imageio_ffmpeg

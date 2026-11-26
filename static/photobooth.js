@@ -547,9 +547,9 @@
     if (mp4El) {
       if (job.mp4_url) {
         mp4El.src = withCacheBust(job.mp4_url);
-        mp4El.closest('.result-card')?.removeAttribute('hidden');
+        mp4El.closest('.deliverable-card')?.removeAttribute('hidden');
       } else {
-        mp4El.closest('.result-card')?.setAttribute('hidden', '');
+        mp4El.closest('.deliverable-card')?.setAttribute('hidden', '');
       }
     }
     document.getElementById('frame-image').src = withCacheBust(job.frame_url);
@@ -557,9 +557,9 @@
     if (nobgEl) {
       if (job.frame_nobg_url) {
         nobgEl.src = withCacheBust(job.frame_nobg_url);
-        nobgEl.closest('.result-card')?.removeAttribute('hidden');
+        nobgEl.closest('.deliverable-card')?.removeAttribute('hidden');
       } else {
-        nobgEl.closest('.result-card')?.setAttribute('hidden', '');
+        nobgEl.closest('.deliverable-card')?.setAttribute('hidden', '');
       }
     }
     document.getElementById('result-style-name').textContent = job.style;
