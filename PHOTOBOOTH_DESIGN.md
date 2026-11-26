@@ -25,17 +25,23 @@ Mengubah repo neural style transfer menjadi photobooth web lokal: pengunjung men
    - Pengguna memilih tepat 3 dari 5 foto favorit untuk masuk ke dalam frame.
    - Begitu 3 foto dipilih dan dikonfirmasi, sistem langsung memulai proses neural style transfer menggunakan style yang sudah dipilih di awal, tanpa perlu memilih style ulang atau menekan tombol tambahan.
 5. **Hasil Karya, Unduh Satu Tombol & QR Code Google Drive**:
-   - Menampilkan preview GIF loop dan frame JPG bersanding rapi.
-   - Tombol unduh disatukan menjadi 1 tombol utama: **`UNDUH & DAPATKAN QR CODE GOOGLE DRIVE`**.
+   - Menampilkan preview 4 karya dalam grid yang seimbang:
+     1. GIF Animasi (10 frame before + after)
+     2. Video MP4 (dengan musik acak dari folder `music/`)
+     3. Frame Foto dengan Background (`studio-sela-frame.jpg`, 3 foto pilihan dalam template dengan latar asli)
+     4. Frame Foto Background Tema (`studio-sela-frame-nobg.jpg`, 3 foto pilihan dengan background subjek diganti dengan lukisan/motif tema seni yang dipilih)
+   - Tombol unduh disatukan menjadi 1 tombol utama: **`SIMPAN KE GOOGLE DRIVE & DAPATKAN QR CODE`**.
    - Ketika ditekan, muncul popup **QR Code Google Drive**:
      - Pengunjung memindai (*scan*) QR Code menggunakan kamera ponsel untuk langsung membuka folder Google Drive dan mengunduh seluruh hasil ke ponsel mereka.
      - QR membuka folder hasil di Google Drive; tombol modal dan tombol hasil mengulang alur foto.
    - Paket karya yang diunggah ke Google Drive (dan di dalam ZIP):
      - `studio-sela-loop.gif` (GIF animasi 10 frame)
-     - `studio-sela-frame.jpg` (Frame dengan 3 foto pilihan)
+     - `studio-sela-musik.mp4` (Video MP4 dengan musik)
+     - `studio-sela-frame.jpg` (Frame dengan 3 foto pilihan beserta background)
+     - `studio-sela-frame-nobg.jpg` (Frame dengan 3 foto pilihan tanpa background)
      - 5 foto asli (`foto_asli_01.jpg` .. `foto_asli_05.jpg`)
      - 5 foto style (`foto_style_01_dengan_frame.jpg` .. `foto_style_05_tanpa_frame.jpg`, mencakup baik foto yang masuk ke dalam frame maupun yang tidak dimasukkan ke dalam frame)
-     - Total terdapat 10 foto individual + GIF + Frame.
+     - Total terdapat 10 foto individual + GIF + MP4 + 2 Frame.
    - Konfigurasi Google Drive memakai OAuth Desktop: simpan file unduhan OAuth sebagai `client_secret.json` di root proyek. Login Google pertama menghasilkan `token.json` lokal.
    - Salin `gdrive_config.example.json` menjadi `gdrive_config.json` dan isi `folder_id` opsional dengan folder yang dapat diedit oleh akun OAuth.
    - Opsi "Foto Lagi" untuk me-reset sesi ke layar awal.

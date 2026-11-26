@@ -1,13 +1,14 @@
 """Small local web app for the neural style transfer photobooth."""
 import os
 import random
+import subprocess
 import threading
 import time
 import uuid
 import zipfile
 
 from flask import Flask, jsonify, render_template, request, send_from_directory
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+from PIL import Image, ImageFont, ImageOps
 from werkzeug.utils import secure_filename
 
 import gdrive_uploader
@@ -17,6 +18,7 @@ import neural_style_transfer as nst
 ROOT = os.path.dirname(os.path.abspath(__file__))
 STYLE_DIR = os.path.join(ROOT, 'data', 'style-images')
 JOB_DIR = os.path.join(ROOT, 'data', 'photobooth')
+MUSIC_DIR = os.path.join(ROOT, 'music')
 ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp'}
 STYLES = [
     {'id': 'vg_starry_night', 'name': 'Starry Night', 'mood': 'Swirling, luminous brushstrokes'},
@@ -53,7 +55,82 @@ def _cover_image(image, size):
     return ImageOps.fit(image.convert('RGB'), size, method=LANCZOS)
 
 
-def _make_outputs(job_path, original_paths, styled_paths, selected_indices, guest_name):
+def _green_frame_slots(frame_image):
+    """Find the three green photo placeholders in the supplied frame artwork."""
+    pixels = frame_image.convert('RGB')
+    width, height = pixels.size
+    green_rows = []
+    for y in range(height):
+        count = sum(1 for x in range(width)
+                    if (lambda rgb: rgb[1] > 140 and rgb[1] > rgb[0] * 1.35
+                        and rgb[1] > rgb[2] * 1.2)(pixels.getpixel((x, y))))
+        if count > width * 0.25:
+            green_rows.append(y)
+
+    row_groups = []
+    for y in green_rows:
+        if not row_groups or y > row_groups[-1][-1] + 1:
+            row_groups.append([y])
+        else:
+            row_groups[-1].append(y)
+
+    slots = []
+    for rows in row_groups:
+        ys = range(rows[0], rows[-1] + 1)
+        xs = [x for y in ys for x in range(width)
+              if (lambda rgb: rgb[1] > 140 and rgb[1] > rgb[0] * 1.35
+                  and rgb[1] > rgb[2] * 1.2)(pixels.getpixel((x, y)))]
+        if xs:
+            slots.append((min(xs), rows[0], max(xs) + 1, rows[-1] + 1))
+    if len(slots) != 3:
+        raise RuntimeError('Frame harus memiliki tepat 3 area foto berwarna hijau.')
+    return slots
+
+
+def _make_music_video(job_path, gif_path):
+    music_paths = []
+    for folder, _, filenames in os.walk(MUSIC_DIR):
+        music_paths.extend(os.path.join(folder, name) for name in filenames
+                           if name.lower().endswith(('.wav', '.mp3', '.m4a', '.aac', '.ogg', '.flac')))
+    if not music_paths:
+        raise RuntimeError('Tidak ada file musik yang didukung di folder music/.')
+
+    try:
+        import imageio_ffmpeg
+    except ImportError as exc:
+        raise RuntimeError('Dependensi imageio-ffmpeg belum terpasang. Jalankan pip install -r requirements-web.txt.') from exc
+
+    music_path = random.choice(music_paths)
+    mp4_path = os.path.join(job_path, 'studio-sela-musik.mp4')
+    command = [
+        imageio_ffmpeg.get_ffmpeg_exe(), '-y', '-loglevel', 'error',
+        '-ignore_loop', '0', '-i', gif_path,
+        '-i', music_path,
+        '-t', '15', '-map', '0:v:0', '-map', '1:a:0',
+        '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',
+        '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', mp4_path,
+    ]
+    try:
+        subprocess.run(command, check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError as exc:
+        detail = exc.stderr.strip() if exc.stderr else 'FFmpeg gagal membuat video.'
+        raise RuntimeError('Gagal membuat MP4: {}'.format(detail[-500:])) from exc
+    return mp4_path
+
+
+_REMBG_SESSION = None
+
+
+def _get_rembg_session():
+    global _REMBG_SESSION
+    if _REMBG_SESSION is None:
+        os.environ['U2NET_HOME'] = os.path.join(ROOT, 'models', 'u2net')
+        import rembg
+        _REMBG_SESSION = rembg.new_session('u2net')
+    return _REMBG_SESSION
+
+
+def _make_outputs(job_path, original_paths, styled_paths, selected_indices, guest_name, style=None):
     # Mix all before/after frames together; do not preserve capture or render order.
     gif_paths = list(original_paths) + list(styled_paths)
     random.shuffle(gif_paths)
@@ -61,39 +138,82 @@ def _make_outputs(job_path, original_paths, styled_paths, selected_indices, gues
     gif_path = os.path.join(job_path, 'studio-sela-loop.gif')
     gif_frames[0].save(gif_path, save_all=True, append_images=gif_frames[1:],
                        duration=650, loop=0, optimize=True)
+    mp4_path = _make_music_video(job_path, gif_path)
 
-    width, margin, slot_h, gap, header_h, footer_h = 760, 48, 430, 26, 150, 130
-    height = header_h + margin + 3 * slot_h + 2 * gap + footer_h
-    frame = Image.new('RGB', (width, height), '#f5eee4')
-    draw = ImageDraw.Draw(frame)
-    name_font_size = 34
-    title_font = _font(name_font_size, bold=True)
-    while draw.textbbox((0, 0), guest_name, font=title_font)[2] > width - 2 * margin and name_font_size > 20:
-        name_font_size -= 2
-        title_font = _font(name_font_size, bold=True)
-    caption_font = _font(18)
-    footer_font = _font(16)
-    draw.text((margin, 32), guest_name, fill='#272b25', font=title_font)
-    draw.text((margin, 88), 'STUDIO SELA PHOTOBOOTH', fill='#db6847', font=caption_font)
-    slot_w = width - 2 * margin
-    for slot, photo_index in enumerate(selected_indices):
-        top = header_h + slot * (slot_h + gap)
-        draw.rectangle((margin - 8, top - 8, width - margin + 8, top + slot_h + 8),
-                       fill='#fffdf9')
-        image = _cover_image(Image.open(styled_paths[photo_index]), (slot_w, slot_h))
-        frame.paste(image, (margin, top))
-        draw.text((margin, top + slot_h + 8), '0{}'.format(slot + 1),
-                  fill='#db6847', font=footer_font)
-    draw.text((margin, height - 68), 'DIBUAT KHUSUS UNTUKMU  |  STUDIO SELA',
-              fill='#64705a', font=footer_font)
-    jpg_path = os.path.join(job_path, 'studio-sela-frame.jpg')
-    frame.save(jpg_path, quality=94, optimize=True)
+    frame_path = os.path.join(ROOT, 'frame', '1.png')
+    if not os.path.isfile(frame_path):
+        raise RuntimeError('Template frame tidak ditemukan: frame/1.png')
+    source_frame = Image.open(frame_path).convert('RGB')
+    slots = _green_frame_slots(source_frame)
 
-    # Package into ZIP: GIF loop, Frame JPG, and all 10 individual photos (5 original + 5 styled)
+    # 1. Frame dengan Background
+    frame_bg = source_frame.copy()
+    frame_pixels = source_frame.load()
+    for photo_index, (left, top, right, bottom) in zip(selected_indices, slots):
+        photo = _cover_image(Image.open(styled_paths[photo_index]),
+                             (right - left, bottom - top))
+        photo_pixels = photo.load()
+        for y in range(top, bottom):
+            for x in range(left, right):
+                r, g, b = frame_pixels[x, y]
+                if g > 140 and g > r * 1.35 and g > b * 1.2:
+                    frame_bg.putpixel((x, y), photo_pixels[x - left, y - top])
+    jpg_bg_path = os.path.join(job_path, 'studio-sela-frame.jpg')
+    frame_bg.save(jpg_bg_path, quality=94, optimize=True)
+
+    # 2. Frame latar tema (background foto subjek dihapus & diganti latar tema yang dipilih)
+    import rembg
+    rembg_sess = _get_rembg_session()
+
+    theme_bg_img = None
+    if style and isinstance(style, dict) and style.get('file'):
+        style_img_path = os.path.join(STYLE_DIR, style['file'])
+        if os.path.isfile(style_img_path):
+            try:
+                theme_bg_img = Image.open(style_img_path).convert('RGB')
+            except Exception:
+                theme_bg_img = None
+
+    frame_nobg = source_frame.copy()
+    for photo_index, (left, top, right, bottom) in zip(selected_indices, slots):
+        slot_w, slot_h = right - left, bottom - top
+
+        # Siapkan latar belakang tema yang dipilih (atau latar bersih jika tema belum termuat)
+        if theme_bg_img is not None:
+            slot_img = _cover_image(theme_bg_img, (slot_w, slot_h))
+        else:
+            slot_img = Image.new('RGB', (slot_w, slot_h), (255, 255, 255))
+
+        orig_photo = _cover_image(Image.open(original_paths[photo_index]), (slot_w, slot_h))
+        styled_photo = _cover_image(Image.open(styled_paths[photo_index]), (slot_w, slot_h))
+
+        # Deteksi subjek dari foto asli agar potongan tepi rambut & tubuh sangat presisi
+        try:
+            orig_cutout = rembg.remove(orig_photo, session=rembg_sess)
+            alpha_mask = orig_cutout.split()[-1]
+            styled_cutout = styled_photo.convert('RGBA')
+            styled_cutout.putalpha(alpha_mask)
+        except Exception:
+            styled_cutout = rembg.remove(styled_photo, session=rembg_sess)
+
+        # Tempelkan subjek di atas latar belakang tema yang dipilih
+        slot_img.paste(styled_cutout, (0, 0), styled_cutout)
+        slot_pixels = slot_img.load()
+        for y in range(top, bottom):
+            for x in range(left, right):
+                r, g, b = frame_pixels[x, y]
+                if g > 140 and g > r * 1.35 and g > b * 1.2:
+                    frame_nobg.putpixel((x, y), slot_pixels[x - left, y - top])
+    jpg_nobg_path = os.path.join(job_path, 'studio-sela-frame-nobg.jpg')
+    frame_nobg.save(jpg_nobg_path, quality=94, optimize=True)
+
+    # Package GIF, music video, kedua frame JPG, dan seluruh foto ke file ZIP
     zip_path = os.path.join(job_path, 'studio-sela-semua-karya.zip')
     with zipfile.ZipFile(zip_path, 'w', compression=zipfile.ZIP_DEFLATED) as zipf:
         zipf.write(gif_path, arcname='studio-sela-loop.gif')
-        zipf.write(jpg_path, arcname='studio-sela-frame.jpg')
+        zipf.write(mp4_path, arcname='studio-sela-musik.mp4')
+        zipf.write(jpg_bg_path, arcname='studio-sela-frame-dengan-bg.jpg')
+        zipf.write(jpg_nobg_path, arcname='studio-sela-frame-latar-tema.jpg')
         # 5 foto asli
         for idx, orig_path in enumerate(original_paths):
             ext = os.path.splitext(orig_path)[1] or '.jpg'
@@ -104,14 +224,14 @@ def _make_outputs(job_path, original_paths, styled_paths, selected_indices, gues
             in_frame = "dengan_frame" if idx in selected_indices else "tanpa_frame"
             zipf.write(st_path, arcname=f'foto_style_{idx + 1:02d}_{in_frame}{ext}')
 
-    return gif_path, jpg_path, zip_path
+    return gif_path, mp4_path, jpg_bg_path, jpg_nobg_path, zip_path
 
 
 def run_job(job_id, image_paths, selected_indices, style, guest_name):
     job_path = os.path.join(JOB_DIR, job_id)
     processed_dir = os.path.join(job_path, 'processed')
     os.makedirs(processed_dir, exist_ok=True)
-    iterations = 80
+    iterations = 200
     try:
         styled_paths = []
         style_extension = os.path.splitext(style['file'])[1]
@@ -144,11 +264,13 @@ def run_job(job_id, image_paths, selected_indices, style, guest_name):
                 raise RuntimeError('Foto {} selesai tanpa menghasilkan gambar.'.format(index + 1))
             styled_paths.append(os.path.join(result_dir, result_names[0]))
 
-        _update_progress(job_id, 'Menyusun GIF, Frame JPG, dan paket unduhan...', 95)
-        _make_outputs(job_path, image_paths, styled_paths, selected_indices, guest_name)
+        _update_progress(job_id, 'Menyusun GIF, MP4 musik, 2 frame foto, dan paket unduhan...', 95)
+        _make_outputs(job_path, image_paths, styled_paths, selected_indices, guest_name, style=style)
         with JOBS_LOCK:
             JOBS[job_id].update(status='done', gif='studio-sela-loop.gif',
+                                mp4='studio-sela-musik.mp4',
                                 frame='studio-sela-frame.jpg',
+                                frame_nobg='studio-sela-frame-nobg.jpg',
                                 zip='studio-sela-semua-karya.zip',
                                 guest_name=guest_name,
                                 progress=100,
@@ -235,7 +357,10 @@ def job_status(job_id):
         response = dict(job)
     if response.get('status') == 'done':
         response['gif_url'] = '/results/{}/{}'.format(job_id, response['gif'])
+        response['mp4_url'] = '/results/{}/{}'.format(job_id, response['mp4'])
         response['frame_url'] = '/results/{}/{}'.format(job_id, response['frame'])
+        if 'frame_nobg' in response:
+            response['frame_nobg_url'] = '/results/{}/{}'.format(job_id, response['frame_nobg'])
         if 'zip' in response:
             response['zip_url'] = '/results/{}/{}'.format(job_id, response['zip'])
         if 'drive_url' in response:
@@ -292,7 +417,8 @@ def warmup_models():
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         print(f"[*] Pre-warming model and styles on {device}...")
         nst.get_or_prepare_model('vgg19', device)
-        print("[*] Model ready. Style features will be prepared when a photo is submitted.")
+        _get_rembg_session()
+        print("[*] Model & rembg ready. Style features will be prepared when a photo is submitted.")
     except Exception as err:
         print(f"[*] Pre-warm notice: {err}")
 

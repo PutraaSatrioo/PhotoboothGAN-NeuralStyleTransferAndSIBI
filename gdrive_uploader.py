@@ -120,7 +120,9 @@ def upload_job_to_drive(job_id, job_path, guest_name):
 
         files_to_upload = [
             ('studio-sela-frame.jpg', 'image/jpeg'),
+            ('studio-sela-frame-nobg.jpg', 'image/jpeg'),
             ('studio-sela-loop.gif', 'image/gif'),
+            ('studio-sela-musik.mp4', 'video/mp4'),
             ('studio-sela-semua-karya.zip', 'application/zip'),
         ]
         for filename, mimetype in files_to_upload:

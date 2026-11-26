@@ -461,10 +461,10 @@
 
     if (count === framePhotoCount) {
       confirmBtn.disabled = false;
-      confirmBtn.innerHTML = `<span>LANJUTKAN & PROSES SENI (${activeStyleName.toUpperCase()})</span> <span class="btn-arrow">➔</span>`;
+      confirmBtn.innerHTML = `<span>LANJUTKAN & PROSES SENI (${activeStyleName.toUpperCase()})</span> <span class="btn-arrow">&rarr;</span>`;
     } else {
       confirmBtn.disabled = true;
-      confirmBtn.innerHTML = `<span>PILIH TEPAT 3 FOTO (${count}/3)</span> <span class="btn-arrow">➔</span>`;
+      confirmBtn.innerHTML = `<span>PILIH TEPAT 3 FOTO (${count}/3)</span> <span class="btn-arrow">&rarr;</span>`;
     }
   }
 
@@ -524,7 +524,11 @@
         currentJobId = jobId;
         currentZipUrl = job.zip_url || `/results/${jobId}/studio-sela-semua-karya.zip`;
         document.getElementById('gif-image').src = `${job.gif_url}?t=${Date.now()}`;
+        document.getElementById('mp4-video').src = `${job.mp4_url}?t=${Date.now()}`;
         document.getElementById('frame-image').src = `${job.frame_url}?t=${Date.now()}`;
+        if (job.frame_nobg_url && document.getElementById('frame-nobg-image')) {
+          document.getElementById('frame-nobg-image').src = `${job.frame_nobg_url}?t=${Date.now()}`;
+        }
         document.getElementById('result-style-name').textContent = job.style;
 
         processing.hidden = true;

@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f5eee4">
-  <title>Studio Sela Ã¢â‚¬â€ Photobooth Seni</title>
+  <title>Studio Sela &mdash; Photobooth Seni</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;1,500;1,600&display=swap">
-  <link rel="stylesheet" href="{{ url_for('static', filename='photobooth.css', v='23') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='photobooth.css', v='25') }}">
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 </head>
@@ -32,7 +32,7 @@
           <div class="welcome-camera-frame" id="welcome-camera-frame">
             <video id="camera" autoplay playsinline muted></video>
             <div class="welcome-camera-placeholder" id="welcome-camera-placeholder">
-              <span class="camera-icon">Ã¢â€”Å½</span>
+              <span class="camera-icon">[KAMERA]</span>
               <strong>Kamera Live Sedang Disiapkan</strong>
               <span>Izinkan akses kamera untuk mendeteksi wajah dan tangan SIBI</span>
             </div>
@@ -62,7 +62,7 @@
             <div class="sibi-card-body">
               <div class="sibi-letter-display">
                 <span class="sibi-letter-title">HURUF</span>
-                <strong id="sibi-candidate">Ã¢â‚¬â€</strong>
+                <strong id="sibi-candidate">&mdash;</strong>
               </div>
               <div class="sibi-metrics">
                 <div class="sibi-conf-row">
@@ -83,7 +83,7 @@
             <ul class="sibi-help-list">
               <li>Posisikan satu tangan di depan kamera dengan jelas.</li>
               <li>Tahan pose huruf SIBI selama 3 detik hingga terisi otomatis.</li>
-              <li>Mendukung 24 huruf statis (AÃ¢â‚¬â€œI, KÃ¢â‚¬â€œY). Untuk J, Z, atau spasi, gunakan keyboard di bawah.</li>
+              <li>Mendukung 24 huruf statis (A&ndash;I, K&ndash;Y). Untuk J, Z, atau spasi, gunakan keyboard di bawah.</li>
             </ul>
           </div>
         </div>
@@ -98,7 +98,7 @@
       <div class="welcome-bottom-row">
         <button class="done-bar-button" id="name-done" type="button">
           <span>DONE</span>
-          <span class="btn-arrow">Ã¢Å¾â€</span>
+          <span class="btn-arrow">&rarr;</span>
         </button>
       </div>
     </div>
@@ -167,7 +167,7 @@
             <img id="upload-preview" alt="Foto terpilih" hidden>
             <span class="camera-flash" id="camera-flash" aria-hidden="true"></span>
             <div class="camera-placeholder" id="camera-placeholder">
-              <span class="camera-icon">Ã¢â€”Å½</span>
+              <span class="camera-icon">[KAMERA]</span>
               <strong>Ruang Kamera</strong>
               <span>Kamera aktif</span>
             </div>
@@ -198,7 +198,7 @@
             <button class="style-card" type="button" data-style="{{ style.id }}" data-name="{{ style.name }}" aria-pressed="false">
               <div class="style-thumb">
                 <img src="{{ url_for('style_image', filename=style.id + '.jpg') }}?v={{ '2' if style.id == 'batik' else '1' }}" alt="{{ style.name }}" loading="lazy">
-                <span class="check-badge">Ã¢Å“â€œ</span>
+                <span class="check-badge">&#10003;</span>
               </div>
               <span class="style-name">{{ style.name }}</span>
             </button>
@@ -220,7 +220,7 @@
         <div class="picker-actions">
           <button class="done-bar-button confirm-selection" id="confirm-selection" type="button" disabled>
             <span>LANJUTKAN DENGAN 3 FOTO (0/3)</span>
-            <span class="btn-arrow">Ã¢Å¾â€</span>
+            <span class="btn-arrow">&rarr;</span>
           </button>
         </div>
       </section>
@@ -236,13 +236,25 @@
             <div class="deliverable-media gif-preview">
               <img id="gif-image" alt="GIF loop 10 frame">
             </div>
-            <p class="deliverable-label">GIF ANIMASI Ã‚Â· BEFORE + AFTER (10 FRAME)</p>
+            <p class="deliverable-label">GIF ANIMASI &middot; BEFORE + AFTER</p>
+          </article>
+          <article class="deliverable-card">
+            <div class="deliverable-media video-preview">
+              <video id="mp4-video" controls playsinline preload="metadata"></video>
+            </div>
+            <p class="deliverable-label">VIDEO MP4 &middot; DENGAN MUSIK</p>
           </article>
           <article class="deliverable-card">
             <div class="deliverable-media frame-preview">
-              <img id="frame-image" alt="Frame 3 foto seni">
+              <img id="frame-image" alt="Frame dengan background">
             </div>
-            <p class="deliverable-label">FRAME FOTO Ã‚Â· 3 PILIHAN DENGAN STYLE</p>
+            <p class="deliverable-label">FRAME &middot; DENGAN BACKGROUND</p>
+          </article>
+          <article class="deliverable-card">
+            <div class="deliverable-media frame-preview">
+              <img id="frame-nobg-image" alt="Frame dengan background tema">
+            </div>
+            <p class="deliverable-label">FRAME &middot; BACKGROUND TEMA</p>
           </article>
         </div>
 
@@ -255,7 +267,7 @@
         </div>
 
         <div class="result-actions">
-          <p>STYLE TERPILIH: <strong id="result-style-name">Ã¢â‚¬â€</strong></p>
+          <p>STYLE TERPILIH: <strong id="result-style-name">&mdash;</strong></p>
           <button class="restart-btn" id="start-over" type="button">FOTO LAGI</button>
         </div>
       </section>
@@ -282,7 +294,7 @@
   <!-- QR Code & Google Drive Modal -->
   <div class="qr-modal" id="qr-modal" hidden>
     <div class="qr-modal-card">
-      <button class="qr-close-btn" id="qr-close" type="button" aria-label="Tutup">Ã¢Å“â€¢</button>
+      <button class="qr-close-btn" id="qr-close" type="button" aria-label="Tutup">&times;</button>
       <div class="qr-header">
         <span class="qr-badge">GOOGLE DRIVE CLOUD</span>
         <h2>Scan QR Code</h2>
@@ -319,6 +331,6 @@
   <!-- Toast Notification -->
   <div class="toast" id="toast" role="status"></div>
 
-  <script src="{{ url_for('static', filename='photobooth.js', v='24') }}"></script>
+  <script src="{{ url_for('static', filename='photobooth.js', v='25') }}"></script>
 </body>
 </html>
