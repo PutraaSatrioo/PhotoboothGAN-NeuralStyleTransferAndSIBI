@@ -20,7 +20,6 @@ from werkzeug.utils import secure_filename
 
 import gdrive_uploader
 import ig_uploader
-import neural_style_transfer as nst
 
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -42,7 +41,7 @@ def _load_local_env():
 
 _load_local_env()
 STYLE_DIR = os.path.join(ROOT, 'data', 'style-images')
-JOB_DIR = os.path.join(ROOT, 'data', 'photobooth')
+JOB_DIR = '/tmp/photobooth' if os.environ.get('VERCEL') else os.path.join(ROOT, 'data', 'photobooth')
 MUSIC_DIR = os.path.join(ROOT, 'music')
 ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp'}
 STYLES = [
@@ -59,7 +58,11 @@ STYLES = [
 ]
 JOBS = {}
 JOBS_LOCK = threading.Lock()
-app = Flask(__name__)
+app = Flask(
+    __name__,
+    template_folder=os.path.join(ROOT, 'templates'),
+    static_folder=os.path.join(ROOT, 'static'),
+)
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 app.config['MAX_CONTENT_LENGTH'] = 60 * 1024 * 1024
 LANCZOS = getattr(Image, 'Resampling', Image).LANCZOS
@@ -515,6 +518,7 @@ def run_job(job_id, image_paths, selected_indices, style, guest_name):
                     except Exception:
                         precomputed_masks = None
         elif engine == 'gatys_cpu':
+            import neural_style_transfer as nst
             for index, image_path in enumerate(image_paths):
                 config = {
                     'content_img_name': os.path.basename(image_path),
@@ -731,6 +735,7 @@ def warmup_models():
     try:
         if os.environ.get('PHOTOBOOTH_ENGINE', 'qwen').strip().lower() == 'gatys_cpu':
             import torch
+            import neural_style_transfer as nst
             print('[*] Preparing VGG19 for Gatys NST on CPU...')
             nst.get_or_prepare_model('vgg19', torch.device('cpu'))
         _get_rembg_session()
