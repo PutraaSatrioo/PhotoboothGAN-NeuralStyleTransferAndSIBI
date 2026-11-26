@@ -23,7 +23,7 @@ Mengubah repo neural style transfer menjadi photobooth web lokal: pengunjung men
 4. **Pemilihan 3 Foto & Auto-Generate**:
    - Setelah 5 foto selesai diambil, antarmuka langsung membuka layar pemilihan foto (*capture picker*).
    - Pengguna memilih tepat 3 dari 5 foto favorit untuk masuk ke dalam frame.
-   - Begitu 3 foto dipilih dan dikonfirmasi, sistem langsung memulai proses neural style transfer menggunakan style yang sudah dipilih di awal, tanpa perlu memilih style ulang atau menekan tombol tambahan.
+   - Begitu 3 foto dipilih dan dikonfirmasi, server menjalankan Gatys NST di CPU untuk lima foto dengan style yang sudah dipilih; hasil transfer dipakai untuk GIF dan frame. Opsi Qwen dapat diaktifkan melalui `.env`.
 5. **Hasil Karya, Unduh Satu Tombol & QR Code Google Drive**:
    - Menampilkan preview 4 karya dalam grid yang seimbang:
      1. GIF Animasi (10 frame before + after)
@@ -54,8 +54,8 @@ Mengubah repo neural style transfer menjadi photobooth web lokal: pengunjung men
 - Kursor dikendalikan ujung ibu jari lewat MediaPipe Hands. Mencubit ibu jari dan telunjuk menjalankan klik; saat cubitan, posisi kursor dikunci agar klik tidak bergeser dari target. Zona gerak aktif memakai 85% dari rentang gerak sebelumnya dan dipetakan ke seluruh halaman agar tombol tepi lebih mudah dijangkau. Indikator tangan hanya tampil sebagai lingkaran di atas halaman; jangan menggambar landmark/garis pada preview kamera. Overlay kursor harus berada di DOM sebelum skrip pelacakan dijalankan.
 - Setelah foto dijepret/diunggah, preview foto menutupi video kamera yang tetap berjalan di belakangnya supaya MediaPipe tetap menerima frame untuk kontrol tangan.
 - Style yang ditawarkan: Starry Night, Candy, Mosaic, Udnie, The Wave, Ben Giles, La CafÃ©, Flowers, Batik, Batik 2, dan Mosaic Amber. Mosaic Amber memakai pola mosaik geometris bernuansa amber, ochre, krem, dan cokelat; asetnya `data/style-images/mosaic_amber.jpg`.
-- Engine: neural style transfer Gatys yang sudah ada (`neural_style_transfer.py`), VGG19 (model disiapkan saat startup; representasi style hanya dihitung saat diminta), L-BFGS, inisialisasi content, tinggi 320 px, 200 iterasi per foto. Lima foto diproses berurutan sehingga durasi sekitar lima kali pemrosesan satu foto, ditambah waktu membuat GIF/frame. CLI tetap memakai default lama 1000 iterasi.
-- Seluruh lima sumber foto menjalani neural style transfer secara berurutan menggunakan style yang sama. GIF loop berisi 10 frame (5 asli + 5 hasil style) yang diacak sebagai satu kumpulan tanpa mempertahankan urutan capture/render. JPG frame vertikal menampilkan tiga hasil style yang dipilih pengguna.
+- Engine default photobooth: neural style transfer Gatys memakai VGG19 dan L-BFGS di CPU (`PHOTOBOOTH_ENGINE=gatys_cpu`), menjaga struktur isi foto sambil menerapkan statistik tekstur style. GPU lokal tidak dipakai. Mode opsional `PHOTOBOOTH_ENGINE=qwen` memakai API generatif dan dapat mengubah detail foto.
+- Seluruh lima sumber foto menjalani Gatys NST secara berurutan di CPU menggunakan style yang sama. GIF loop berisi 10 frame (5 foto asli dan 5 hasil NST) dengan setiap foto asli langsung diikuti hasil stylize-nya. JPG frame vertikal menampilkan tiga hasil style yang dipilih pengguna.
 - Ukuran total unggahan dibatasi 60 MB; kamera menghasilkan JPEG untuk lima frame.
 - Navigasi Gerakan Tangan (Gesture Control): Menggunakan MediaPipe Hands di frontend untuk mengendalikan kursor virtual via telunjuk dan aksi klik tanpa sentuh menggunakan gesture menjepit jempol-telunjuk (pinch).
 - Model SIBI hasil training: `models/sibi_landmark_classifier.keras` memakai 21 landmark MediaPipe (x/y relatif, 42 fitur) dan MLP 24 kelas. Training memproses gambar penuh dengan MediaPipe; label diambil dari nama berkas. Evaluasi terakhir: akurasi validasi 95.03% dan tes 93.93% pada sampel yang berhasil dideteksi MediaPipe; MediaPipe menemukan tangan pada 4.197/6.120 train, 483/720 validasi, dan 247/360 tes. Angka akurasi bersyarat pada tangan berhasil dideteksi dan belum menjamin performa live. J dan Z tidak tercakup karena memerlukan gerakan. Model Keras, label, bobot JSON browser, dan laporan berada di `models/`.
@@ -70,7 +70,7 @@ Mengubah repo neural style transfer menjadi photobooth web lokal: pengunjung men
 
 | File | Tanggung jawab |
 |---|---|
-| `photobooth.py` | Flask app, validasi lima foto, NST berurutan, komposisi GIF/JPG dengan Pillow, status job, dan route hasil. |
+| `photobooth.py` | Flask app, validasi lima foto, Gatys NST CPU atau opsi Image API, penghapusan latar CPU, komposisi GIF/JPG, status job, dan route hasil. |
 | `templates/photobooth.html` | Form nama awal, kamera, pemilih tiga foto, kartu style, status proses, preview serta unduhan GIF/JPG. |
 | `static/photobooth.css` | Sistem visual Studio Sela, tata letak responsif, seleksi foto, dan hasil. |
 | `static/photobooth.js` | Form nama, prediksi dan konfirmasi SIBI tiga detik, keyboard layar, rangkaian lima jepretan, unggah, seleksi tiga foto, kontrol tangan, polling job, dan preview hasil. |
@@ -78,7 +78,7 @@ Mengubah repo neural style transfer menjadi photobooth web lokal: pengunjung men
 | `data/sibi/sibi_alphabet_config.json` | Urutan alfabet SIBI, label huruf bergerak, dan fallback keyboard sesuai gambar acuan. |
 | `models/sibi_landmark_classifier.keras` | Classifier Keras hasil training. |
 | `models/sibi_landmark_weights.json` | Bobot dense classifier untuk inferensi ringan di browser. |
-| `neural_style_transfer.py` | Pipeline optimasi NST. `config['iterations']` memberi override untuk web; tanpa override perilaku CLI tetap 1000/3000. |
+| `neural_style_transfer.py` | Pipeline neural style transfer Gatys untuk CLI dan photobooth CPU. |
 | `requirements-web.txt` | Flask/Werkzeug/Pillow untuk server web dan penyusunan aset hasil di samping dependensi NST. |
 | `data/style-images/` | Gambar referensi untuk kartu style dan masukan style NST. |
 | `data/photobooth/` | Direktori sesi foto dan output yang dibuat saat aplikasi digunakan. |
@@ -89,13 +89,13 @@ Mengubah repo neural style transfer menjadi photobooth web lokal: pengunjung men
 2. Jalankan `python photobooth.py` dari root repository.
 3. Buka `http://127.0.0.1:5000`.
 
-Model VGG yang diperlukan dapat diunduh torchvision saat pertama kali dipakai; untuk hasil, perangkat sebaiknya memiliki model yang sudah tersedia. Perhitungan NST tradisional memang memerlukan waktu, sehingga halaman memperlihatkan status proses sebelum menampilkan hasil final.
+Default photobooth menggunakan Gatys NST di CPU; perangkat lokal tidak memakai GPU. Waktu proses lebih lama daripada akselerasi GPU. Untuk memakai Qwen generatif, ubah `PHOTOBOOTH_ENGINE=qwen` di `.env` dan isi `IMAGE_API_KEY`; Qwen memerlukan koneksi internet dan dapat mengubah detail/komposisi foto.
 
 ## Catatan update
 
 - Saat menambah/mengganti style, perbarui daftar `STYLES` di `photobooth.py` dan pastikan nama file style tepat. Samakan jumlah/style copy pada catatan ini.
 - Jika path aset style berubah, perbarui route `/styles`, kartu pada template bila perlu, dan `Peta file` ini.
-- Jika mengubah langkah, endpoint, atau status progres (`phase`, `progress`), jaga kesesuaian `photobooth.py`, `neural_style_transfer.py`, dan `static/photobooth.js`, lalu dokumentasikan kontrak API di sini.
+- Jika mengubah langkah, endpoint, atau status progres (`phase`, `progress`), jaga kesesuaian `photobooth.py`, engine NST, dan `static/photobooth.js`, lalu dokumentasikan kontrak API di sini.
 - Jangan ubah default optimizer/iterasi CLI hanya untuk mempercepat web demo; gunakan override `iterations` pada konfigurasi web.
 - Jika server dipindahkan dari localhost, tinjau autentikasi, privasi/retensi unggahan, batas ukuran, concurrency GPU/CPU, serta pembatasan akses sebelum membuka akses jaringan.
 - Untuk melatih ulang classifier alfabet, jalankan `python train_sibi_landmarks.py` dengan TensorFlow, MediaPipe, NumPy, dan Pillow tersedia. Script membaca gambar penuh dari split train/val/test, mengambil label dari nama berkas, dan mengabaikan gambar yang tidak terdeteksi MediaPipe.
