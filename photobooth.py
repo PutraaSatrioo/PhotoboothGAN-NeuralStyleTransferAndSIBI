@@ -150,8 +150,8 @@ def _make_music_video(job_path, gif_path):
 
     try:
         import imageio_ffmpeg
-    except ImportError as exc:
-        raise RuntimeError('Dependensi imageio-ffmpeg belum terpasang. Jalankan pip install -r requirements-web.txt.') from exc
+    except ImportError:
+        return None
 
     music_path = random.choice(music_paths)
     mp4_path = os.path.join(job_path, 'studio-sela-musik.mp4')
@@ -368,7 +368,10 @@ def _generate_batch_grid_via_api(image_paths, style, output_paths, style_data_ur
 
 def _precompute_subject_masks(original_paths, selected_indices):
     """Compute rembg alpha masks for selected slots on CPU while cloud rendering runs."""
-    import rembg
+    try:
+        import rembg
+    except ImportError:
+        return None
 
     _, slots, _ = _get_frame_template()
     rembg_sess = _get_rembg_session()
@@ -402,56 +405,64 @@ def _make_outputs(job_path, original_paths, styled_paths, selected_indices, gues
     frame_bg.save(jpg_bg_path, quality=94, optimize=True)
 
     # 2. Frame latar tema (background foto subjek dihapus & diganti latar tema yang dipilih)
-    import rembg
-    rembg_sess = _get_rembg_session()
+    jpg_nobg_path = None
+    try:
+        import rembg
+        rembg_sess = _get_rembg_session()
+    except ImportError:
+        rembg = None
+        rembg_sess = None
 
-    theme_bg_img = None
-    if style and isinstance(style, dict) and style.get('file'):
-        style_img_path = os.path.join(STYLE_DIR, style['file'])
-        if os.path.isfile(style_img_path):
-            try:
-                theme_bg_img = Image.open(style_img_path).convert('RGB')
-            except Exception:
-                theme_bg_img = None
+    if rembg is not None:
+        theme_bg_img = None
+        if style and isinstance(style, dict) and style.get('file'):
+            style_img_path = os.path.join(STYLE_DIR, style['file'])
+            if os.path.isfile(style_img_path):
+                try:
+                    theme_bg_img = Image.open(style_img_path).convert('RGB')
+                except Exception:
+                    theme_bg_img = None
 
-    frame_nobg = source_frame.copy()
-    for photo_index, (left, top, right, bottom), mask_img in zip(selected_indices, slots, slot_masks):
-        slot_w, slot_h = right - left, bottom - top
+        frame_nobg = source_frame.copy()
+        for photo_index, (left, top, right, bottom), mask_img in zip(selected_indices, slots, slot_masks):
+            slot_w, slot_h = right - left, bottom - top
 
-        # Siapkan latar belakang tema yang dipilih (atau latar bersih jika tema belum termuat)
-        if theme_bg_img is not None:
-            slot_img = _cover_image(theme_bg_img, (slot_w, slot_h))
-        else:
-            slot_img = Image.new('RGB', (slot_w, slot_h), (255, 255, 255))
-
-        styled_photo = _cover_image(Image.open(styled_paths[photo_index]), (slot_w, slot_h))
-
-        # Deteksi subjek dari foto asli agar potongan tepi rambut & tubuh sangat presisi
-        try:
-            if precomputed_masks and photo_index in precomputed_masks:
-                alpha_mask = precomputed_masks[photo_index]
+            # Siapkan latar belakang tema yang dipilih (atau latar bersih jika tema belum termuat)
+            if theme_bg_img is not None:
+                slot_img = _cover_image(theme_bg_img, (slot_w, slot_h))
             else:
-                orig_photo = _cover_image(Image.open(original_paths[photo_index]), (slot_w, slot_h))
-                orig_cutout = rembg.remove(orig_photo, session=rembg_sess)
-                alpha_mask = orig_cutout.split()[-1]
-            styled_cutout = styled_photo.convert('RGBA')
-            styled_cutout.putalpha(alpha_mask)
-        except Exception:
-            styled_cutout = rembg.remove(styled_photo, session=rembg_sess)
+                slot_img = Image.new('RGB', (slot_w, slot_h), (255, 255, 255))
 
-        # Tempelkan subjek di atas latar belakang tema yang dipilih
-        slot_img.paste(styled_cutout, (0, 0), styled_cutout)
-        frame_nobg.paste(slot_img, (left, top), mask_img)
-    jpg_nobg_path = os.path.join(job_path, 'studio-sela-frame-nobg.jpg')
-    frame_nobg.save(jpg_nobg_path, quality=94, optimize=True)
+            styled_photo = _cover_image(Image.open(styled_paths[photo_index]), (slot_w, slot_h))
+
+            # Deteksi subjek dari foto asli agar potongan tepi rambut & tubuh sangat presisi
+            try:
+                if precomputed_masks and photo_index in precomputed_masks:
+                    alpha_mask = precomputed_masks[photo_index]
+                else:
+                    orig_photo = _cover_image(Image.open(original_paths[photo_index]), (slot_w, slot_h))
+                    orig_cutout = rembg.remove(orig_photo, session=rembg_sess)
+                    alpha_mask = orig_cutout.split()[-1]
+                styled_cutout = styled_photo.convert('RGBA')
+                styled_cutout.putalpha(alpha_mask)
+            except Exception:
+                styled_cutout = rembg.remove(styled_photo, session=rembg_sess)
+
+            # Tempelkan subjek di atas latar belakang tema yang dipilih
+            slot_img.paste(styled_cutout, (0, 0), styled_cutout)
+            frame_nobg.paste(slot_img, (left, top), mask_img)
+        jpg_nobg_path = os.path.join(job_path, 'studio-sela-frame-nobg.jpg')
+        frame_nobg.save(jpg_nobg_path, quality=94, optimize=True)
 
     # Package GIF, music video, kedua frame JPG, dan seluruh foto ke file ZIP
     zip_path = os.path.join(job_path, 'studio-sela-semua-karya.zip')
     with zipfile.ZipFile(zip_path, 'w', compression=zipfile.ZIP_DEFLATED) as zipf:
         zipf.write(gif_path, arcname='studio-sela-loop.gif')
-        zipf.write(mp4_path, arcname='studio-sela-musik.mp4')
+        if mp4_path and os.path.isfile(mp4_path):
+            zipf.write(mp4_path, arcname='studio-sela-musik.mp4')
         zipf.write(jpg_bg_path, arcname='studio-sela-frame-dengan-bg.jpg')
-        zipf.write(jpg_nobg_path, arcname='studio-sela-frame-latar-tema.jpg')
+        if jpg_nobg_path and os.path.isfile(jpg_nobg_path):
+            zipf.write(jpg_nobg_path, arcname='studio-sela-frame-latar-tema.jpg')
         # 5 foto asli
         for idx, orig_path in enumerate(original_paths):
             ext = os.path.splitext(orig_path)[1] or '.jpg'
@@ -556,17 +567,25 @@ def run_job(job_id, image_paths, selected_indices, style, guest_name):
             raise RuntimeError('PHOTOBOOTH_ENGINE harus gatys_cpu atau qwen.')
 
         _update_progress(job_id, 'Menyusun GIF, MP4 musik, 2 frame foto, dan paket unduhan...', 95)
-        _make_outputs(job_path, image_paths, styled_paths, selected_indices, guest_name,
-                      style=style, precomputed_masks=precomputed_masks)
+        gif_path, mp4_path, jpg_bg_path, jpg_nobg_path, zip_path = _make_outputs(
+            job_path, image_paths, styled_paths, selected_indices, guest_name,
+            style=style, precomputed_masks=precomputed_masks,
+        )
+        done_payload = {
+            'status': 'done',
+            'gif': 'studio-sela-loop.gif',
+            'frame': 'studio-sela-frame.jpg',
+            'zip': 'studio-sela-semua-karya.zip',
+            'guest_name': guest_name,
+            'progress': 100,
+            'phase': 'Selesai',
+        }
+        if mp4_path and os.path.isfile(mp4_path):
+            done_payload['mp4'] = 'studio-sela-musik.mp4'
+        if jpg_nobg_path and os.path.isfile(jpg_nobg_path):
+            done_payload['frame_nobg'] = 'studio-sela-frame-nobg.jpg'
         with JOBS_LOCK:
-            JOBS[job_id].update(status='done', gif='studio-sela-loop.gif',
-                                mp4='studio-sela-musik.mp4',
-                                frame='studio-sela-frame.jpg',
-                                frame_nobg='studio-sela-frame-nobg.jpg',
-                                zip='studio-sela-semua-karya.zip',
-                                guest_name=guest_name,
-                                progress=100,
-                                phase='Selesai')
+            JOBS[job_id].update(done_payload)
     except Exception as exc:
         with JOBS_LOCK:
             JOBS[job_id].update(status='error', error=str(exc))
