@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+models/u2net/
+models/*.keras
+models/*.h5
+data/content-images/
+data/examples/
+data/photobooth/
+data/output-images/
+music/
+.env
+ig_session.json
+client_secret*.json
+token.json
+credentials.json

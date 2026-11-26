@@ -543,10 +543,24 @@
         currentJobId = jobId;
         currentZipUrl = job.zip_url || `/results/${jobId}/studio-sela-semua-karya.zip`;
         document.getElementById('gif-image').src = `${job.gif_url}?t=${Date.now()}`;
-        document.getElementById('mp4-video').src = `${job.mp4_url}?t=${Date.now()}`;
+        const mp4El = document.getElementById('mp4-video');
+        if (mp4El) {
+          if (job.mp4_url) {
+            mp4El.src = `${job.mp4_url}?t=${Date.now()}`;
+            mp4El.closest('.result-card')?.removeAttribute('hidden');
+          } else {
+            mp4El.closest('.result-card')?.setAttribute('hidden', '');
+          }
+        }
         document.getElementById('frame-image').src = `${job.frame_url}?t=${Date.now()}`;
-        if (job.frame_nobg_url && document.getElementById('frame-nobg-image')) {
-          document.getElementById('frame-nobg-image').src = `${job.frame_nobg_url}?t=${Date.now()}`;
+        const nobgEl = document.getElementById('frame-nobg-image');
+        if (nobgEl) {
+          if (job.frame_nobg_url) {
+            nobgEl.src = `${job.frame_nobg_url}?t=${Date.now()}`;
+            nobgEl.closest('.result-card')?.removeAttribute('hidden');
+          } else {
+            nobgEl.closest('.result-card')?.setAttribute('hidden', '');
+          }
         }
         document.getElementById('result-style-name').textContent = job.style;
 

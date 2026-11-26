@@ -319,8 +319,10 @@ def _generate_batch_grid_via_api(image_paths, style, output_paths, style_data_ur
     if count == 0 or count > 6:
         raise ValueError('Grid batch hanya mendukung 1 sampai 6 foto.')
 
-    grid_w = int(os.environ.get('IMAGE_API_GRID_WIDTH', '1280'))
-    grid_h = int(os.environ.get('IMAGE_API_GRID_HEIGHT', '640'))
+    default_grid_w = '832' if os.environ.get('VERCEL') else '1280'
+    default_grid_h = '448' if os.environ.get('VERCEL') else '640'
+    grid_w = int(os.environ.get('IMAGE_API_GRID_WIDTH', default_grid_w))
+    grid_h = int(os.environ.get('IMAGE_API_GRID_HEIGHT', default_grid_h))
     cols = 3
     rows = 2 if count > 3 else 1
     pad = 8
@@ -653,6 +655,9 @@ def create_capture():
             'status': 'processing', 'style': style['name'], 'progress': 0,
             'phase': 'Menyiapkan job...',
         }
+    if os.environ.get('VERCEL'):
+        run_job(job_id, image_paths, selected_indices, style, guest_name)
+        return jsonify(job_id=job_id), 200
     threading.Thread(target=run_job,
                      args=(job_id, image_paths, selected_indices, style, guest_name),
                      daemon=True).start()
@@ -668,7 +673,8 @@ def job_status(job_id):
         response = dict(job)
     if response.get('status') == 'done':
         response['gif_url'] = '/results/{}/{}'.format(job_id, response['gif'])
-        response['mp4_url'] = '/results/{}/{}'.format(job_id, response['mp4'])
+        if 'mp4' in response:
+            response['mp4_url'] = '/results/{}/{}'.format(job_id, response['mp4'])
         response['frame_url'] = '/results/{}/{}'.format(job_id, response['frame'])
         if 'frame_nobg' in response:
             response['frame_nobg_url'] = '/results/{}/{}'.format(job_id, response['frame_nobg'])

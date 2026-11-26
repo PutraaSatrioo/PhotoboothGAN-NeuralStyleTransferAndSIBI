@@ -3,7 +3,17 @@
   "builds": [
     {
       "src": "photobooth.py",
-      "use": "@vercel/python"
+      "use": "@vercel/python",
+      "config": {
+        "includeFiles": [
+          "templates/**",
+          "static/**",
+          "frame/**",
+          "data/style-images/**",
+          "data/sibi/**",
+          "models/sibi_landmark_weights.json"
+        ]
+      }
     }
   ],
   "routes": [
