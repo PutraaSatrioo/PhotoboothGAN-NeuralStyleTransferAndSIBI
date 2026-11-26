@@ -90,7 +90,8 @@ def neural_style_transfer(config):
     dump_path = os.path.join(config['output_img_dir'], out_dir_name)
     os.makedirs(dump_path, exist_ok=True)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # Web jobs can explicitly pin execution to CPU while CLI keeps auto-detection.
+    device = torch.device(config.get('device') or ("cuda" if torch.cuda.is_available() else "cpu"))
 
     report_progress('Membaca foto...', 2)
     content_img = utils.prepare_img(content_img_path, config['height'], device)

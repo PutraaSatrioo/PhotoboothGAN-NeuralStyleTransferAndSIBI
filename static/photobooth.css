@@ -244,6 +244,19 @@ body.hand-control-active * {
   line-height: 1.5;
 }
 
+.camera-retry-btn {
+  margin-top: 8px;
+  padding: 10px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-radius: 3px;
+  background: var(--orange);
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+
+.camera-retry-btn:hover { filter: brightness(1.1); }
+
 /* Corner frame brackets */
 .frame-corner {
   position: absolute;
@@ -1172,8 +1185,65 @@ body.hand-control-active * {
 .download-all-container {
   width: 100%;
   flex: 0 0 auto;
+  display: flex;
+  gap: 14px;
 }
 
+/* Tombol Instagram */
+.download-btn-ig {
+  flex: 1 1 0;
+  height: 68px;
+  background: linear-gradient(135deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%);
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 0 20px;
+  cursor: pointer;
+  transition: filter 0.15s, transform 0.1s, box-shadow 0.15s;
+  box-shadow: 0 4px 18px rgba(220, 39, 67, 0.35);
+}
+.download-btn-ig:hover  { filter: brightness(1.1); transform: translateY(-2px); box-shadow: 0 6px 24px rgba(220, 39, 67, 0.5); }
+.download-btn-ig:active { transform: translateY(1px); }
+
+/* Tombol Google Drive */
+.download-btn-drive {
+  flex: 1 1 0;
+  height: 68px;
+  background: var(--olive);
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 0 20px;
+  cursor: pointer;
+  transition: background-color 0.15s, transform 0.1s, box-shadow 0.15s;
+  box-shadow: 0 4px 18px rgba(93, 108, 84, 0.4);
+}
+.download-btn-drive:hover  { background: #475440; transform: translateY(-2px); box-shadow: 0 6px 24px rgba(93, 108, 84, 0.5); }
+.download-btn-drive:active { transform: translateY(1px); }
+
+.btn-icon {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+/* Keep old download-all-btn working in case still referenced */
 .download-all-btn {
   width: 100%;
   height: 72px;
@@ -1194,21 +1264,9 @@ body.hand-control-active * {
   cursor: pointer;
   transition: background-color 0.15s, transform 0.1s, box-shadow 0.15s;
 }
-
-.download-all-btn:hover {
-  background: #475440;
-  transform: translateY(-2px);
-  box-shadow: 0 6px 24px rgba(93, 108, 84, 0.5);
-}
-
-.download-all-btn:active {
-  transform: translateY(1px);
-}
-
-.download-all-btn .btn-arrow {
-  font-size: 26px;
-  font-weight: 700;
-}
+.download-all-btn:hover  { background: #475440; transform: translateY(-2px); box-shadow: 0 6px 24px rgba(93, 108, 84, 0.5); }
+.download-all-btn:active { transform: translateY(1px); }
+.download-all-btn .btn-arrow { font-size: 26px; font-weight: 700; }
 
 .result-actions {
   display: flex;
@@ -1415,6 +1473,65 @@ body.hand-control-active * {
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+
+/* Dual-panel variant: wider card */
+.qr-modal-dual {
+  width: min(100%, 860px);
+}
+
+/* Two side-by-side QR panels */
+.qr-dual-panels {
+  display: flex;
+  gap: 0;
+  align-items: stretch;
+  margin: 0 -4px;
+}
+
+.qr-panel {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 20px 24px 24px;
+}
+
+.qr-panel-divider {
+  width: 1.5px;
+  background: var(--line);
+  margin: 8px 0;
+  flex-shrink: 0;
+}
+
+.qr-panel-badge {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: 20px;
+}
+
+.qr-badge-ig {
+  background: linear-gradient(135deg, #f09433, #dc2743, #bc1888);
+  color: #ffffff;
+}
+
+.qr-badge-drive {
+  background: var(--olive);
+  color: #ffffff;
+}
+
+.qr-panel-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 230px;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
 }
 
 .qr-close-btn {

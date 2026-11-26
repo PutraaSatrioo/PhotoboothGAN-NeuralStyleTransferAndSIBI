@@ -272,7 +272,13 @@
   // ---------------------------------------------------------------------------
 
   async function startCamera() {
+    const statusTitle = document.getElementById('camera-status-title');
+    const statusMessage = document.getElementById('camera-status-message');
+    const retryButton = document.getElementById('camera-retry');
+    if (retryButton) retryButton.hidden = true;
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      if (statusTitle) statusTitle.textContent = 'Akses kamera tidak tersedia';
+      if (statusMessage) statusMessage.textContent = 'Buka aplikasi lewat localhost atau 127.0.0.1, lalu coba browser terbaru.';
       if (welcomeCameraPlaceholder) welcomeCameraPlaceholder.hidden = false;
       return;
     }
@@ -289,11 +295,24 @@
       if (welcomeCameraPlaceholder) welcomeCameraPlaceholder.hidden = true;
       if (placeholder) placeholder.hidden = true;
       initMediaPipeHands();
-    } catch (_) {
+    } catch (err) {
       video.hidden = true;
+      const messages = {
+        NotAllowedError: 'Izin kamera ditolak. Klik ikon kamera di bilah alamat, ubah izinnya menjadi Izinkan, lalu coba lagi.',
+        PermissionDeniedError: 'Izin kamera ditolak. Izinkan kamera untuk situs ini dari ikon di bilah alamat.',
+        NotFoundError: 'Kamera tidak ditemukan. Sambungkan atau aktifkan kamera, lalu coba lagi.',
+        NotReadableError: 'Kamera sedang dipakai aplikasi lain. Tutup aplikasi tersebut, lalu coba lagi.',
+        AbortError: 'Kamera gagal dimulai. Periksa koneksi kamera lalu coba lagi.',
+        SecurityError: 'Browser memblokir akses kamera. Buka halaman melalui localhost atau 127.0.0.1.'
+      };
+      if (statusTitle) statusTitle.textContent = 'Kamera belum bisa dibuka';
+      if (statusMessage) statusMessage.textContent = messages[err.name] || `Kesalahan kamera (${err.name || 'tidak diketahui'}). Periksa izin dan sambungan kamera.`;
+      if (retryButton) retryButton.hidden = false;
       if (welcomeCameraPlaceholder) welcomeCameraPlaceholder.hidden = false;
     }
   }
+
+  document.getElementById('camera-retry')?.addEventListener('click', startCamera);
 
   // ---------------------------------------------------------------------------
   // Screen 1: "DONE" -> Move to Screen 2
@@ -554,65 +573,65 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Google Drive Upload & QR Code Modal
+  // Instagram Story + Google Drive Upload — Dual QR Code Modal
   // ---------------------------------------------------------------------------
 
-  const allDownloadBtn = document.getElementById('all-download');
   const qrModal = document.getElementById('qr-modal');
   const qrCloseBtn = document.getElementById('qr-close');
-  const qrLoading = document.getElementById('qr-loading');
-  const qrImageWrap = document.getElementById('qr-image-wrap');
-  const qrCodeImg = document.getElementById('qr-code-img');
   const qrTakeAgainBtn = document.getElementById('qr-take-again');
-  const qrDirectDownload = document.getElementById('qr-direct-download');
-  const qrSetupNotice = document.getElementById('qr-setup-notice');
-  const qrErrorNotice = document.getElementById('qr-error-notice');
 
-  if (allDownloadBtn) {
-    allDownloadBtn.addEventListener('click', async () => {
-      if (!currentJobId) return;
-      if (qrModal) qrModal.hidden = false;
-      if (qrLoading) qrLoading.hidden = false;
-      if (qrImageWrap) qrImageWrap.hidden = true;
-      if (qrSetupNotice) qrSetupNotice.hidden = true;
-      if (qrErrorNotice) qrErrorNotice.hidden = true;
-      if (qrDirectDownload) {
-        qrDirectDownload.href = currentZipUrl || `/results/${currentJobId}/studio-sela-semua-karya.zip`;
+  // Helpers: show/hide individual panel states
+  function showIgLoading()  { document.getElementById('qr-ig-loading')?.removeAttribute('hidden'); document.getElementById('qr-ig-image-wrap')?.setAttribute('hidden',''); document.getElementById('qr-ig-error')?.setAttribute('hidden',''); }
+  function showIgQr(src)    { document.getElementById('qr-ig-loading')?.setAttribute('hidden',''); const w=document.getElementById('qr-ig-image-wrap'); if(w){w.removeAttribute('hidden'); document.getElementById('qr-ig-img').src=src;} }
+  function showIgError(msg) { document.getElementById('qr-ig-loading')?.setAttribute('hidden',''); document.getElementById('qr-ig-image-wrap')?.setAttribute('hidden',''); const e=document.getElementById('qr-ig-error'); if(e){e.textContent=msg; e.removeAttribute('hidden');} }
+
+  function showDriveLoading()  { document.getElementById('qr-drive-loading')?.removeAttribute('hidden'); document.getElementById('qr-drive-image-wrap')?.setAttribute('hidden',''); document.getElementById('qr-drive-error')?.setAttribute('hidden',''); document.getElementById('qr-setup-notice')?.setAttribute('hidden',''); }
+  function showDriveQr(src)    { document.getElementById('qr-drive-loading')?.setAttribute('hidden',''); const w=document.getElementById('qr-drive-image-wrap'); if(w){w.removeAttribute('hidden'); document.getElementById('qr-drive-img').src=src;} }
+  function showDriveError(msg, isSetup) { document.getElementById('qr-drive-loading')?.setAttribute('hidden',''); document.getElementById('qr-drive-image-wrap')?.setAttribute('hidden',''); if(isSetup){ document.getElementById('qr-setup-notice')?.removeAttribute('hidden'); } else { const e=document.getElementById('qr-drive-error'); if(e){e.textContent=msg; e.removeAttribute('hidden');} } }
+
+  async function doIgUpload() {
+    showIgLoading();
+    try {
+      const res = await fetch(`/api/jobs/${currentJobId}/upload-ig`, { method: 'POST' });
+      const data = await res.json();
+      if (res.ok && data.success && data.qr_base64) {
+        showIgQr(data.qr_base64);
+      } else {
+        showIgError(data.error || 'Gagal upload ke Instagram.');
+        notify(data.error || 'Gagal upload ke Instagram Story.');
       }
-
-      try {
-        const res = await fetch(`/api/jobs/${currentJobId}/upload-drive`, { method: 'POST' });
-        const data = await res.json();
-        if (qrLoading) qrLoading.hidden = true;
-        if (!res.ok || !data.success || !data.qr_base64) {
-          if (qrImageWrap) qrImageWrap.hidden = true;
-          if (qrSetupNotice && data.needs_setup) qrSetupNotice.hidden = false;
-          if (qrErrorNotice && !data.needs_setup) {
-            qrErrorNotice.textContent = data.message || data.error || 'Foto tidak berhasil diunggah ke Google Drive.';
-            qrErrorNotice.hidden = false;
-          }
-          notify(data.message || data.error || 'Foto tidak berhasil diunggah ke Google Drive.');
-          return;
-        }
-        if (qrImageWrap) qrImageWrap.hidden = false;
-
-        if (data.qr_base64 && qrCodeImg) {
-          qrCodeImg.src = data.qr_base64;
-        }
-        if (data.needs_setup && qrSetupNotice) {
-          qrSetupNotice.hidden = false;
-        }
-      } catch (err) {
-        if (qrLoading) qrLoading.hidden = true;
-        if (qrImageWrap) qrImageWrap.hidden = true;
-        if (qrErrorNotice) {
-          qrErrorNotice.textContent = 'Gagal mengunggah ke Google Drive: ' + err.message;
-          qrErrorNotice.hidden = false;
-        }
-        notify('Gagal mengunggah ke Google Drive: ' + err.message);
-      }
-    });
+    } catch (err) {
+      showIgError('Gagal upload ke Instagram: ' + err.message);
+      notify('Gagal upload ke Instagram: ' + err.message);
+    }
   }
+
+  async function doDriveUpload() {
+    showDriveLoading();
+    try {
+      const res = await fetch(`/api/jobs/${currentJobId}/upload-drive`, { method: 'POST' });
+      const data = await res.json();
+      if (res.ok && data.success && data.qr_base64) {
+        showDriveQr(data.qr_base64);
+      } else {
+        showDriveError(data.message || data.error || 'Gagal upload ke Drive.', !!data.needs_setup);
+        notify(data.message || data.error || 'Gagal upload ke Google Drive.');
+      }
+    } catch (err) {
+      showDriveError('Gagal upload ke Google Drive: ' + err.message, false);
+      notify('Gagal upload ke Google Drive: ' + err.message);
+    }
+  }
+
+  function openQrModal() {
+    if (!currentJobId) return;
+    if (qrModal) qrModal.hidden = false;
+    // Upload Instagram dinonaktifkan sementara; hanya unggah ke Google Drive
+    doDriveUpload();
+  }
+
+  document.getElementById('btn-upload-ig')?.addEventListener('click', openQrModal);
+  document.getElementById('btn-upload-drive')?.addEventListener('click', openQrModal);
 
   if (qrCloseBtn && qrModal) {
     qrCloseBtn.addEventListener('click', () => {

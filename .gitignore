@@ -9,3 +9,8 @@ gdrive_config.json
 data/photobooth/
 data/output-images/
 data/sibi/Labeled Official Indonesian Sign Language (SIBI) Alphabet/
+# Instagram credentials & session
+.env
+ig_session.json
+.vscode/
+models/u2net/

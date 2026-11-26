@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;1,500;1,600&display=swap">
-  <link rel="stylesheet" href="{{ url_for('static', filename='photobooth.css', v='25') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='photobooth.css', v='27') }}">
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 </head>
@@ -33,8 +33,9 @@
             <video id="camera" autoplay playsinline muted></video>
             <div class="welcome-camera-placeholder" id="welcome-camera-placeholder">
               <span class="camera-icon">[KAMERA]</span>
-              <strong>Kamera Live Sedang Disiapkan</strong>
-              <span>Izinkan akses kamera untuk mendeteksi wajah dan tangan SIBI</span>
+              <strong id="camera-status-title">Kamera Live Sedang Disiapkan</strong>
+              <span id="camera-status-message">Izinkan akses kamera untuk mendeteksi wajah dan tangan SIBI</span>
+              <button id="camera-retry" class="camera-retry-btn" type="button" hidden>Coba buka kamera lagi</button>
             </div>
             <span class="frame-corner corner-tl"></span>
             <span class="frame-corner corner-tr"></span>
@@ -258,11 +259,15 @@
           </article>
         </div>
 
-        <!-- Satu tombol untuk upload langsung ke Google Drive & tampilkan QR Code -->
+        <!-- 2 tombol upload: Instagram Story + Google Drive -->
         <div class="download-all-container">
-          <button id="all-download" class="download-all-btn" type="button">
-            <span>SIMPAN KE GOOGLE DRIVE & DAPATKAN QR CODE</span>
-            <span class="btn-arrow">&rarr;</span>
+          <button id="btn-upload-ig" class="download-btn-ig" type="button" hidden>
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/></svg>
+            <span>BAGIKAN KE INSTAGRAM STORY</span>
+          </button>
+          <button id="btn-upload-drive" class="download-btn-drive" type="button">
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+            <span>SIMPAN KE GOOGLE DRIVE</span>
           </button>
         </div>
 
@@ -291,33 +296,54 @@
     </div>
   </div>
 
-  <!-- QR Code & Google Drive Modal -->
+  <!-- QR Code Modal — 2 panel: Instagram Story + Google Drive -->
   <div class="qr-modal" id="qr-modal" hidden>
-    <div class="qr-modal-card">
+    <div class="qr-modal-card qr-modal-dual">
       <button class="qr-close-btn" id="qr-close" type="button" aria-label="Tutup">&times;</button>
       <div class="qr-header">
-        <span class="qr-badge">GOOGLE DRIVE CLOUD</span>
-        <h2>Scan QR Code</h2>
-        <p>Arahkan kamera HP ke QR Code di bawah untuk membuka dan mengunduh seluruh fotomu di Google Drive.</p>
+        <h2>Karya Sudah <em>Tersimpan!</em></h2>
+        <p>Scan QR Code di bawah dengan kamera ponsel.</p>
       </div>
 
-      <div class="qr-display-area">
-        <div class="qr-spinner-wrap" id="qr-loading">
-          <div class="qr-spinner"></div>
-          <span>Mengunggah foto ke Google Drive...</span>
+      <div class="qr-dual-panels">
+        <!-- Panel Instagram (dinonaktifkan sementara) -->
+        <div class="qr-panel" id="qr-panel-ig" hidden>
+          <div class="qr-panel-badge qr-badge-ig">INSTAGRAM STORY</div>
+          <div class="qr-panel-body">
+            <div class="qr-spinner-wrap" id="qr-ig-loading">
+              <div class="qr-spinner"></div>
+              <span>Mengunggah ke Instagram...</span>
+            </div>
+            <div class="qr-image-wrap" id="qr-ig-image-wrap" hidden>
+              <img id="qr-ig-img" src="" alt="QR Code Instagram">
+              <span class="qr-scan-hint">Buka profil &amp; lihat Story-mu</span>
+            </div>
+            <div class="qr-info-alert" id="qr-ig-error" role="alert" hidden></div>
+          </div>
         </div>
-        <div class="qr-image-wrap" id="qr-image-wrap" hidden>
-          <img id="qr-code-img" src="" alt="QR Code Google Drive">
-          <span class="qr-scan-hint">Pindai dengan kamera ponsel untuk unduh ke HP</span>
+
+        <div class="qr-panel-divider" hidden></div>
+
+        <!-- Panel Google Drive -->
+        <div class="qr-panel" id="qr-panel-drive">
+          <div class="qr-panel-badge qr-badge-drive">GOOGLE DRIVE</div>
+          <div class="qr-panel-body">
+            <div class="qr-spinner-wrap" id="qr-drive-loading">
+              <div class="qr-spinner"></div>
+              <span>Mengunggah ke Google Drive...</span>
+            </div>
+            <div class="qr-image-wrap" id="qr-drive-image-wrap" hidden>
+              <img id="qr-drive-img" src="" alt="QR Code Google Drive">
+              <span class="qr-scan-hint">Unduh seluruh karya ke ponsel</span>
+            </div>
+            <div class="qr-info-alert" id="qr-setup-notice" hidden>
+              <strong>Info Pengelola:</strong>
+              <span>Letakkan OAuth Client ID jenis Desktop sebagai <code>client_secret.json</code> di root proyek.</span>
+            </div>
+            <div class="qr-info-alert" id="qr-drive-error" role="alert" hidden></div>
+          </div>
         </div>
       </div>
-
-      <div class="qr-info-alert" id="qr-setup-notice" hidden>
-        <strong>Info Pengelola:</strong>
-        <span>Letakkan OAuth Client ID jenis Desktop sebagai <code>client_secret.json</code> di root proyek. Saat pertama kali mengunggah, masuk ke akun Google dan izinkan akses Drive. Folder tujuan pada <code>gdrive_config.json</code> harus dapat diedit oleh akun Google tersebut.</span>
-      </div>
-
-      <div class="qr-info-alert" id="qr-error-notice" role="alert" hidden></div>
 
       <div class="qr-actions">
         <button id="qr-take-again" type="button" class="btn-open-drive">
@@ -331,6 +357,6 @@
   <!-- Toast Notification -->
   <div class="toast" id="toast" role="status"></div>
 
-  <script src="{{ url_for('static', filename='photobooth.js', v='25') }}"></script>
+  <script src="{{ url_for('static', filename='photobooth.js', v='27') }}"></script>
 </body>
 </html>
