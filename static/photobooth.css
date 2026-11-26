@@ -1751,48 +1751,49 @@ body.hand-control-active * {
   /* Stack main photobooth into step-based mobile view */
   .mobile-welcome-screen {
     min-height: 100dvh;
-    padding: 24px 18px;
+    padding: 28px 24px;
     display: grid;
     place-items: center;
     background: var(--paper);
   }
 
-  .mobile-welcome-card {
-    width: min(100%, 400px);
-    background: var(--card);
-    border: 1.5px solid var(--line);
-    border-radius: 10px;
-    padding: 36px 24px 32px;
+  .mobile-welcome-content {
+    width: min(100%, 360px);
     text-align: center;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 14px;
-    box-shadow: 0 12px 32px rgba(34, 37, 32, 0.07);
+    gap: 12px;
+    transition: opacity 0.26s ease, transform 0.26s cubic-bezier(0.22, 1, 0.36, 1);
   }
 
-  .mobile-welcome-brand {
-    margin-bottom: 4px;
+  .mobile-welcome-content.is-leaving {
+    opacity: 0;
+    transform: translateY(-18px) scale(0.96);
+  }
+
+  .mobile-welcome-art {
+    margin: 0 auto 14px;
   }
 
   .mobile-welcome-eyebrow {
     font-family: var(--mono);
     font-size: 11px;
-    letter-spacing: 0.14em;
+    letter-spacing: 0.16em;
     color: var(--orange);
-    font-weight: 700;
+    font-weight: 500;
     margin: 0;
   }
 
-  .mobile-welcome-card h1 {
+  .mobile-welcome-content h1 {
     font-family: var(--serif);
-    font-size: 32px;
-    line-height: 1.18;
+    font-size: 38px;
+    line-height: 1.15;
     margin: 0;
     color: var(--ink);
   }
 
-  .mobile-welcome-card h1 em {
+  .mobile-welcome-content h1 em {
     color: var(--orange);
   }
 
@@ -1800,32 +1801,43 @@ body.hand-control-active * {
     font-size: 13.5px;
     color: var(--muted);
     line-height: 1.5;
-    margin: 0 0 8px;
+    margin: 4px 0 18px;
   }
 
   .mobile-start-btn {
     width: 100%;
-    max-width: 240px;
-    height: 56px;
+    max-width: 220px;
+    height: 54px;
     background: var(--orange);
     color: #ffffff;
     border: none;
     border-radius: 999px;
     font-family: var(--mono);
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 700;
     letter-spacing: 0.14em;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 12px;
+    gap: 10px;
     cursor: pointer;
-    box-shadow: 0 6px 20px rgba(224, 94, 54, 0.35);
-    transition: transform 0.15s ease, background-color 0.15s ease;
+    box-shadow: 0 6px 20px rgba(224, 94, 54, 0.32);
+    transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.18s ease, background-color 0.18s ease;
   }
 
-  .mobile-start-btn:active {
-    transform: scale(0.96);
+  .mobile-start-btn .btn-arrow {
+    transition: transform 0.22s ease;
+  }
+
+  .mobile-start-btn:active,
+  .mobile-start-btn.is-starting {
+    transform: scale(0.93);
+    background: #c94e28;
+    box-shadow: 0 2px 10px rgba(224, 94, 54, 0.25);
+  }
+
+  .mobile-start-btn.is-starting .btn-arrow {
+    transform: translateX(6px);
   }
 
   .booth-grid {

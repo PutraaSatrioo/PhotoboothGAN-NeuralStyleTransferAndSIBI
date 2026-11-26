@@ -769,8 +769,17 @@
     setMobileStep('welcome');
   }
 
-  document.getElementById('mobile-start-btn')?.addEventListener('click', () => {
-    setMobileStep('style');
+  document.getElementById('mobile-start-btn')?.addEventListener('click', (e) => {
+    const btn = e.currentTarget;
+    const content = document.getElementById('mobile-welcome-content');
+    if (btn.classList.contains('is-starting')) return;
+    btn.classList.add('is-starting');
+    if (content) content.classList.add('is-leaving');
+    setTimeout(() => {
+      btn.classList.remove('is-starting');
+      if (content) content.classList.remove('is-leaving');
+      setMobileStep('style');
+    }, 280);
   });
 
   document.getElementById('mobile-back-style-btn')?.addEventListener('click', () => {
