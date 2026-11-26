@@ -1748,32 +1748,303 @@ body.hand-control-active * {
     display: none;
   }
 
-  /* Stack main photobooth into 1 column: Camera first, Styles second, How-to third */
+  /* Stack main photobooth into step-based mobile view */
+  .mobile-welcome-screen {
+    min-height: 100dvh;
+    padding: 24px 18px;
+    display: grid;
+    place-items: center;
+    background: var(--paper);
+  }
+
+  .mobile-welcome-card {
+    width: min(100%, 400px);
+    background: var(--card);
+    border: 1.5px solid var(--line);
+    border-radius: 10px;
+    padding: 36px 24px 32px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    box-shadow: 0 12px 32px rgba(34, 37, 32, 0.07);
+  }
+
+  .mobile-welcome-brand {
+    margin-bottom: 4px;
+  }
+
+  .mobile-welcome-eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    color: var(--orange);
+    font-weight: 700;
+    margin: 0;
+  }
+
+  .mobile-welcome-card h1 {
+    font-family: var(--serif);
+    font-size: 32px;
+    line-height: 1.18;
+    margin: 0;
+    color: var(--ink);
+  }
+
+  .mobile-welcome-card h1 em {
+    color: var(--orange);
+  }
+
+  .mobile-welcome-desc {
+    font-size: 13.5px;
+    color: var(--muted);
+    line-height: 1.5;
+    margin: 0 0 8px;
+  }
+
+  .mobile-start-btn {
+    width: 100%;
+    max-width: 240px;
+    height: 56px;
+    background: var(--orange);
+    color: #ffffff;
+    border: none;
+    border-radius: 999px;
+    font-family: var(--mono);
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    cursor: pointer;
+    box-shadow: 0 6px 20px rgba(224, 94, 54, 0.35);
+    transition: transform 0.15s ease, background-color 0.15s ease;
+  }
+
+  .mobile-start-btn:active {
+    transform: scale(0.96);
+  }
+
   .booth-grid {
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 12px;
+  }
+
+  /* Step-based visibility on mobile */
+  .flow-column {
+    display: none !important;
+  }
+
+  body[data-mobile-step="style"] .camera-column {
+    display: none !important;
+  }
+
+  body[data-mobile-step="camera"] .style-column {
+    display: none !important;
   }
 
   .camera-column {
     order: 1;
     width: 100%;
+    gap: 10px;
   }
 
+  .mobile-camera-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .mobile-back-style-btn {
+    background: var(--card);
+    border: 1.5px solid var(--line);
+    border-radius: 20px;
+    padding: 7px 14px;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--ink);
+    cursor: pointer;
+  }
+
+  .mobile-active-style-pill {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--orange);
+    background: #fff6f0;
+    border: 1.5px solid var(--orange);
+    border-radius: 20px;
+    padding: 6px 12px;
+  }
+
+  /* Camera almost fills the mobile screen */
   .camera-viewport {
     width: 100%;
-    aspect-ratio: 4 / 3;
-    min-height: 240px;
-    max-height: 54vh;
+    height: calc(100dvh - 235px);
+    min-height: 360px;
+    max-height: 76dvh;
+    border-radius: 10px;
+    transition: transform 0.25s ease, border-radius 0.25s ease;
   }
 
   .countdown {
-    font-size: 84px;
+    font-size: 96px;
   }
 
   .shot-status-bar {
-    height: 46px;
-    padding: 0 16px;
+    height: 40px;
+    padding: 0 14px;
+  }
+
+  /* Mobile Bottom Controls below camera: [Full Screen small] [Shutter center] [Empty right] */
+  .mobile-camera-controls {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    padding: 4px 10px 6px;
+  }
+
+  .mobile-ctrl-left {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+  }
+
+  .mobile-ctrl-center {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .mobile-ctrl-right {
+    /* intentionally empty spacer to keep shutter button centered */
+    min-width: 38px;
+  }
+
+  .mobile-fullscreen-btn {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    border: 1.5px solid var(--line-strong);
+    background: var(--card);
+    color: var(--ink);
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  }
+
+  .mobile-fullscreen-btn:active {
+    transform: scale(0.92);
+  }
+
+  .mobile-shutter-btn {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    border: 3px solid var(--orange);
+    background: #ffffff;
+    padding: 5px;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    box-shadow: 0 6px 18px rgba(224, 94, 54, 0.32);
+    transition: transform 0.14s ease;
+  }
+
+  .mobile-shutter-btn:active {
+    transform: scale(0.92);
+  }
+
+  .mobile-shutter-inner {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background: var(--orange);
+    color: #ffffff;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    display: grid;
+    place-items: center;
+  }
+
+  /* Full-screen expansion with lightweight animation during photo capture or manual toggle */
+  .camera-column.mobile-capture-fullscreen,
+  .camera-column.mobile-manual-fullscreen {
+    position: fixed;
+    inset: 0;
+    z-index: 9500;
+    background: #121411;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    animation: mobileCamExpand 0.24s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+
+  .camera-column.mobile-capture-fullscreen .mobile-camera-topbar,
+  .camera-column.mobile-capture-fullscreen .mobile-camera-controls {
+    display: none !important;
+  }
+
+  .camera-column.mobile-manual-fullscreen .mobile-camera-topbar {
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    right: 14px;
+    z-index: 20;
+  }
+
+  .camera-column.mobile-manual-fullscreen .mobile-camera-controls {
+    position: absolute;
+    bottom: 20px;
+    left: 14px;
+    right: 14px;
+    z-index: 20;
+  }
+
+  .camera-column.mobile-capture-fullscreen .camera-viewport,
+  .camera-column.mobile-manual-fullscreen .camera-viewport {
+    width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    min-height: 100dvh;
+    border: none;
+    border-radius: 0;
+  }
+
+  .camera-column.mobile-capture-fullscreen .shot-status-bar {
+    position: absolute;
+    bottom: 22px;
+    left: 18px;
+    right: 18px;
+    z-index: 20;
+    background: rgba(25, 28, 23, 0.82);
+    border-color: rgba(255, 255, 255, 0.22);
+  }
+
+  .camera-column.mobile-capture-fullscreen .shot-status-label {
+    color: #ffffff;
+  }
+
+  @keyframes mobileCamExpand {
+    from {
+      opacity: 0.85;
+      transform: scale(0.95);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
   }
 
   .style-column {
@@ -1795,22 +2066,6 @@ body.hand-control-active * {
 
   .style-name {
     font-size: 12px;
-  }
-
-  .flow-column {
-    order: 3;
-    width: 100%;
-  }
-
-  .flow-steps {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-  }
-
-  .flow-card {
-    padding: 10px;
-    gap: 8px;
   }
 
   /* Photo picker (Pilih 3 Foto) on mobile */

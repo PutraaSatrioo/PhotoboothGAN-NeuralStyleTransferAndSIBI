@@ -397,10 +397,54 @@
         card.classList.add('selected');
         card.setAttribute('aria-pressed', 'true');
 
-        // Immediately trigger 5-photo burst capture!
+        if (isMobile) {
+          openMobileCameraStep();
+          return;
+        }
+
+        // Desktop/laptop: Immediately trigger 5-photo burst capture!
         startAutoBurstCapture();
       });
     });
+  }
+
+  function setMobileStep(step) {
+    document.body.dataset.mobileStep = step;
+    const mobileWelcome = document.getElementById('mobile-welcome-screen');
+    const appEl = document.getElementById('photobooth-app');
+    const camTopbar = document.getElementById('mobile-camera-topbar');
+    const camControls = document.getElementById('mobile-camera-controls');
+    const camColumn = document.getElementById('camera-column');
+
+    if (camColumn) camColumn.classList.remove('mobile-capture-fullscreen', 'mobile-manual-fullscreen');
+
+    if (step === 'welcome') {
+      if (mobileWelcome) mobileWelcome.hidden = false;
+      if (appEl) appEl.hidden = true;
+    } else if (step === 'style') {
+      if (mobileWelcome) mobileWelcome.hidden = true;
+      if (appEl) appEl.hidden = false;
+      if (camTopbar) camTopbar.hidden = true;
+      if (camControls) camControls.hidden = true;
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else if (step === 'camera') {
+      if (mobileWelcome) mobileWelcome.hidden = true;
+      if (appEl) appEl.hidden = false;
+      if (camTopbar) camTopbar.hidden = false;
+      if (camControls) camControls.hidden = false;
+      const pill = document.getElementById('mobile-active-style-pill');
+      if (pill) pill.textContent = `Style: ${activeStyleName}`;
+      cameraFrame.prepend(video);
+      video.hidden = !cameraStream;
+      placeholder.hidden = !!cameraStream;
+      if (!cameraStream) startCamera();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }
+
+  function openMobileCameraStep() {
+    setMobileStep('camera');
+    notify(`Gaya ${activeStyleName} dipilih! Tekan tombol FOTO di bawah kamera untuk mulai.`);
   }
 
   async function startAutoBurstCapture() {
@@ -463,6 +507,11 @@
     } finally {
       captureSequenceActive = false;
       countdown.hidden = true;
+      const camColumn = document.getElementById('camera-column');
+      if (camColumn) camColumn.classList.remove('mobile-capture-fullscreen', 'mobile-manual-fullscreen');
+      if (document.fullscreenElement && document.exitFullscreen) {
+        document.exitFullscreen().catch(() => {});
+      }
     }
   }
 
@@ -716,12 +765,39 @@
     if (guestGreeting) guestGreeting.textContent = 'Halo, Sobat Seni';
     if (handPill) handPill.hidden = true;
     if (handCursor) handCursor.style.display = 'none';
-    cameraFrame.prepend(video);
-    video.hidden = !cameraStream;
-    placeholder.hidden = !!cameraStream;
     document.getElementById('welcome-screen').hidden = true;
-    document.getElementById('photobooth-app').hidden = false;
+    setMobileStep('welcome');
   }
+
+  document.getElementById('mobile-start-btn')?.addEventListener('click', () => {
+    setMobileStep('style');
+  });
+
+  document.getElementById('mobile-back-style-btn')?.addEventListener('click', () => {
+    if (captureSequenceActive) return;
+    setMobileStep('style');
+  });
+
+  document.getElementById('mobile-fullscreen-btn')?.addEventListener('click', () => {
+    const camColumn = document.getElementById('camera-column');
+    if (!camColumn) return;
+    const isFull = camColumn.classList.toggle('mobile-manual-fullscreen');
+    if (isFull && document.documentElement.requestFullscreen && !document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else if (!isFull && document.fullscreenElement && document.exitFullscreen) {
+      document.exitFullscreen().catch(() => {});
+    }
+  });
+
+  document.getElementById('mobile-shutter-btn')?.addEventListener('click', () => {
+    if (captureSequenceActive) return;
+    const camColumn = document.getElementById('camera-column');
+    if (camColumn) {
+      camColumn.classList.remove('mobile-manual-fullscreen');
+      camColumn.classList.add('mobile-capture-fullscreen');
+    }
+    startAutoBurstCapture();
+  });
 
   function resetForAnotherPhotoSession() {
     capturedPhotos.forEach(p => URL.revokeObjectURL(p.url));
@@ -741,8 +817,7 @@
     });
 
     if (isMobile) {
-      enterMobileDirectMode();
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      setMobileStep('style');
       return;
     }
 
