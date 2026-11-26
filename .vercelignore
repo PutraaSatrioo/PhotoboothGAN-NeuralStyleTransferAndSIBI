@@ -8,7 +8,6 @@ data/examples/
 data/photobooth/
 data/output-images/
 music/
-.env
 ig_session.json
 client_secret*.json
 token.json

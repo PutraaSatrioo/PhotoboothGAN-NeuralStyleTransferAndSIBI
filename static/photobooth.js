@@ -523,12 +523,50 @@
       if (!res.ok) throw new Error(data.error || 'Gagal memulai pemrosesan foto.');
 
       currentJobId = data.job_id;
-      pollJob(data.job_id);
+      if (data.status === 'done') {
+        renderCompletedJob(data.job_id, data);
+      } else {
+        pollJob(data.job_id);
+      }
     } catch (err) {
       processing.hidden = true;
       document.getElementById('capture-picker').hidden = false;
       notify(err.message || 'Terjadi kesalahan saat memproses foto.');
     }
+  }
+
+  function withCacheBust(url) {
+    return url && !url.startsWith('data:') ? `${url}?t=${Date.now()}` : url;
+  }
+
+  function renderCompletedJob(jobId, job) {
+    currentJobId = jobId;
+    currentZipUrl = job.zip_url || `/results/${jobId}/studio-sela-semua-karya.zip`;
+    document.getElementById('gif-image').src = withCacheBust(job.gif_url);
+    const mp4El = document.getElementById('mp4-video');
+    if (mp4El) {
+      if (job.mp4_url) {
+        mp4El.src = withCacheBust(job.mp4_url);
+        mp4El.closest('.result-card')?.removeAttribute('hidden');
+      } else {
+        mp4El.closest('.result-card')?.setAttribute('hidden', '');
+      }
+    }
+    document.getElementById('frame-image').src = withCacheBust(job.frame_url);
+    const nobgEl = document.getElementById('frame-nobg-image');
+    if (nobgEl) {
+      if (job.frame_nobg_url) {
+        nobgEl.src = withCacheBust(job.frame_nobg_url);
+        nobgEl.closest('.result-card')?.removeAttribute('hidden');
+      } else {
+        nobgEl.closest('.result-card')?.setAttribute('hidden', '');
+      }
+    }
+    document.getElementById('result-style-name').textContent = job.style;
+
+    processing.hidden = true;
+    document.getElementById('result-section').hidden = false;
+    notify('Karyamu sudah siap! Klik tombol untuk membuka QR Code Google Drive.');
   }
 
   async function pollJob(jobId) {
@@ -540,33 +578,7 @@
       if (job.status === 'error') throw new Error(job.error || 'Proses foto gagal.');
 
       if (job.status === 'done') {
-        currentJobId = jobId;
-        currentZipUrl = job.zip_url || `/results/${jobId}/studio-sela-semua-karya.zip`;
-        document.getElementById('gif-image').src = `${job.gif_url}?t=${Date.now()}`;
-        const mp4El = document.getElementById('mp4-video');
-        if (mp4El) {
-          if (job.mp4_url) {
-            mp4El.src = `${job.mp4_url}?t=${Date.now()}`;
-            mp4El.closest('.result-card')?.removeAttribute('hidden');
-          } else {
-            mp4El.closest('.result-card')?.setAttribute('hidden', '');
-          }
-        }
-        document.getElementById('frame-image').src = `${job.frame_url}?t=${Date.now()}`;
-        const nobgEl = document.getElementById('frame-nobg-image');
-        if (nobgEl) {
-          if (job.frame_nobg_url) {
-            nobgEl.src = `${job.frame_nobg_url}?t=${Date.now()}`;
-            nobgEl.closest('.result-card')?.removeAttribute('hidden');
-          } else {
-            nobgEl.closest('.result-card')?.setAttribute('hidden', '');
-          }
-        }
-        document.getElementById('result-style-name').textContent = job.style;
-
-        processing.hidden = true;
-        document.getElementById('result-section').hidden = false;
-        notify('Karyamu sudah siap! Klik tombol untuk membuka QR Code Google Drive.');
+        renderCompletedJob(jobId, job);
         return;
       }
 

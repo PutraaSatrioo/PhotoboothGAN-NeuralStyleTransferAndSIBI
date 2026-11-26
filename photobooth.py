@@ -657,7 +657,21 @@ def create_capture():
         }
     if os.environ.get('VERCEL'):
         run_job(job_id, image_paths, selected_indices, style, guest_name)
-        return jsonify(job_id=job_id), 200
+        with JOBS_LOCK:
+            job = dict(JOBS.get(job_id, {}))
+        if job.get('status') == 'error':
+            return jsonify(error=job.get('error', 'Proses foto gagal.')), 500
+        with open(os.path.join(job_path, job['gif']), 'rb') as f:
+            gif_b64 = 'data:image/gif;base64,' + base64.b64encode(f.read()).decode('ascii')
+        with open(os.path.join(job_path, job['frame']), 'rb') as f:
+            frame_b64 = 'data:image/jpeg;base64,' + base64.b64encode(f.read()).decode('ascii')
+        return jsonify(
+            job_id=job_id,
+            status='done',
+            style=job.get('style', style['name']),
+            gif_url=gif_b64,
+            frame_url=frame_b64,
+        ), 200
     threading.Thread(target=run_job,
                      args=(job_id, image_paths, selected_indices, style, guest_name),
                      daemon=True).start()
