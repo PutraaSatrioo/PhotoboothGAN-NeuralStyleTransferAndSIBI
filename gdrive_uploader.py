@@ -64,14 +64,24 @@ def _get_oauth_credentials():
     elif os.path.isfile(TOKEN_FILE):
         credentials = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
     elif token_env:
-        credentials = Credentials.from_authorized_user_info(json.loads(token_env), SCOPES)
+        cleaned = token_env.strip().strip('"').strip("'")
+        if not cleaned.startswith('{'):
+            try:
+                cleaned = base64.b64decode(cleaned).decode('utf-8')
+            except Exception:
+                pass
+        credentials = Credentials.from_authorized_user_info(json.loads(cleaned), SCOPES)
 
     if credentials and (credentials.expired or not credentials.valid) and credentials.refresh_token:
         credentials.refresh(Request())
 
     if not credentials or not credentials.valid:
         if os.environ.get('VERCEL'):
-            raise RuntimeError('Token OAuth Google Drive belum valid di server.')
+            if not token_env:
+                raise RuntimeError(
+                    'GDRIVE_TOKEN_JSON belum diisi di Vercel Environment Variables (atau belum di-Redeploy setelah Save).'
+                )
+            raise RuntimeError('Token OAuth Google Drive di GDRIVE_TOKEN_JSON tidak valid atau sudah dicabut.')
         if not os.path.isfile(OAUTH_CLIENT_FILE):
             raise FileNotFoundError(
                 'File client_secret.json belum ada. Unduh OAuth Client ID jenis Desktop app '
