@@ -86,8 +86,40 @@ def _google_api_error(exc):
     return detail
 
 
-def upload_job_to_drive(job_id, job_path, guest_name):
-    """Upload a completed photo package and return its share URL and QR code."""
+def send_smtp_email(recipient_email, guest_name, drive_url):
+    """Send Google Drive link via SMTP if SMTP_USER and SMTP_PASSWORD are set in .env."""
+    smtp_user = os.environ.get('SMTP_USER', '').strip()
+    smtp_password = os.environ.get('SMTP_PASSWORD', '').strip()
+    if not smtp_user or not smtp_password or not recipient_email:
+        return False
+    smtp_host = os.environ.get('SMTP_HOST', 'smtp.gmail.com').strip()
+    smtp_port = int(os.environ.get('SMTP_PORT', '465'))
+    try:
+        import smtplib
+        from email.message import EmailMessage
+
+        msg = EmailMessage()
+        msg['Subject'] = f'Hasil Foto Artistik Pixora Photobooth — {guest_name}'
+        msg['From'] = smtp_user
+        msg['To'] = recipient_email
+        msg.set_content(
+            f'Halo {guest_name},\n\n'
+            f'Karya foto artistik Pixora Photobooth kamu sudah selesai dirender!\n'
+            f'Silakan buka dan unduh seluruh foto melalui link Google Drive berikut:\n\n'
+            f'{drive_url}\n\n'
+            f'Salam hangat,\nPixora Photobooth'
+        )
+        with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=20) as server:
+            server.login(smtp_user, smtp_password)
+            server.send_message(msg)
+        return True
+    except Exception as exc:
+        print(f'[Email SMTP] Gagal mengirim email ke {recipient_email}: {exc}', file=sys.stderr)
+        return False
+
+
+def upload_job_to_drive(job_id, job_path, guest_name, guest_email=None):
+    """Upload a completed photo package, share/email link if guest_email given, and return share URL + QR."""
     parent_id = get_parent_folder_id()
     if not parent_id:
         return {
@@ -106,7 +138,7 @@ def upload_job_to_drive(job_id, job_path, guest_name):
         service.files().get(fileId=parent_id, fields='id,name,mimeType').execute()
 
         folder_metadata = {
-            'name': f'Studio Sela - {guest_name} ({job_id[:8]})',
+            'name': f'Pixora - {guest_name} ({job_id[:8]})',
             'mimeType': 'application/vnd.google-apps.folder',
             'parents': [parent_id],
         }
@@ -128,17 +160,39 @@ def upload_job_to_drive(job_id, job_path, guest_name):
         for filename, mimetype in files_to_upload:
             file_path = os.path.join(job_path, filename)
             if not os.path.isfile(file_path):
-                raise FileNotFoundError(f'File hasil tidak ditemukan: {filename}')
+                continue
             metadata = {'name': filename, 'parents': [folder_id]}
             media = MediaFileUpload(file_path, mimetype=mimetype, resumable=True)
             service.files().create(body=metadata, media_body=media, fields='id').execute()
 
         drive_url = f'https://drive.google.com/drive/folders/{folder_id}?usp=sharing'
+        email_sent = False
+        clean_email = (guest_email or '').strip()
+        if clean_email and '@' in clean_email:
+            # 1. Try SMTP email if configured
+            email_sent = send_smtp_email(clean_email, guest_name, drive_url)
+            # 2. Always share via Google Drive notification email (uses existing Google OAuth, no SMTP needed)
+            try:
+                service.permissions().create(
+                    fileId=folder_id,
+                    body={'type': 'user', 'role': 'reader', 'emailAddress': clean_email},
+                    sendNotificationEmail=True,
+                    emailMessage=(
+                        f'Halo {guest_name}, hasil foto artistik Pixora Photobooth kamu sudah selesai! '
+                        f'Buka folder Google Drive ini untuk mengunduh semua fotomu: {drive_url}'
+                    ),
+                ).execute()
+                email_sent = True
+            except Exception as share_exc:
+                print(f'[Google Drive] Notifikasi email Drive ke {clean_email} gagal: {share_exc}', file=sys.stderr)
+
         return {
             'success': True,
             'needs_setup': False,
             'drive_url': drive_url,
             'qr_base64': generate_qr_base64(drive_url),
+            'email_sent': email_sent,
+            'email_sent_to': clean_email if email_sent else None,
         }
     except Exception as exc:
         detail = _google_api_error(exc)

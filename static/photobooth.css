@@ -1760,6 +1760,144 @@ body.hand-control-active * {
 }
 
 /* ========================================================================= */
+/* GOOGLE EMAIL LOGIN, REALTIME STYLE PREVIEW & SKIP LOADING BUTTON          */
+/* ========================================================================= */
+
+.google-email-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #ffffff;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 6px;
+  padding: 0 12px;
+}
+
+.google-email-wrapper .google-icon {
+  flex-shrink: 0;
+}
+
+.google-email-wrapper input {
+  border: none !important;
+  outline: none !important;
+  background: transparent !important;
+  width: 100%;
+  height: 44px;
+  font-family: var(--sans);
+  font-size: 14px;
+  color: var(--ink);
+  padding: 0 !important;
+}
+
+.mobile-google-login-box {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.mobile-email-input-wrap {
+  border-radius: 999px;
+  padding: 2px 16px;
+  box-shadow: 0 4px 14px rgba(34, 37, 32, 0.06);
+}
+
+.mobile-email-hint {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+
+.realtime-style-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.live-style-badge {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 15;
+  background: rgba(25, 28, 23, 0.82);
+  color: #fff5ef;
+  border: 1.5px solid var(--orange);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.live-style-badge.is-off {
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #c2bcb0;
+}
+
+.skip-loading-btn {
+  margin-top: 18px;
+  width: 100%;
+  padding: 13px 18px;
+  background: #ffffff;
+  color: var(--ink);
+  border: 1.5px solid var(--orange);
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  box-shadow: 0 6px 20px rgba(224, 94, 54, 0.15);
+  transition: transform 0.15s ease, background-color 0.15s ease;
+}
+
+.skip-loading-btn span {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--orange);
+}
+
+.skip-loading-btn small {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.skip-loading-btn:hover {
+  background: #fff6f0;
+  transform: translateY(-1px);
+}
+
+.skip-loading-btn:active {
+  transform: scale(0.97);
+}
+
+.result-email-banner {
+  display: inline-block;
+  margin: 8px auto 0;
+  padding: 6px 14px;
+  background: #eef6ec;
+  border: 1px solid #86b37d;
+  border-radius: 999px;
+  color: #365930;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+/* ========================================================================= */
 /* MOBILE & RESPONSIVE LAYOUT (Handphone / Tablet <= 900px)                  */
 /* ========================================================================= */
 

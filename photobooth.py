@@ -296,12 +296,47 @@ def _call_image_api(prompt, source_data_url, style_data_url, out_width, out_heig
         raise RuntimeError('Format response Image API tidak dikenali: {}'.format(exc)) from exc
 
 
+def _stylize_fallback_pil(source_img, style_path):
+    """Fast artistic color-palette & texture style transfer fallback if remote GPU server is down."""
+    import numpy as np
+    from PIL import ImageEnhance, ImageFilter
+
+    src = source_img.convert('RGB')
+    w, h = src.size
+    with Image.open(style_path) as st_raw:
+        st = ImageOps.fit(st_raw.convert('RGB'), (w, h), method=LANCZOS)
+
+    src_arr = np.asarray(src, dtype=np.float32)
+    st_arr = np.asarray(st, dtype=np.float32)
+
+    # Reinhard color statistics transfer (blend 68% style palette + 32% original skin/lighting)
+    src_mean = src_arr.mean(axis=(0, 1), keepdims=True)
+    src_std = src_arr.std(axis=(0, 1), keepdims=True) + 1e-5
+    st_mean = st_arr.mean(axis=(0, 1), keepdims=True)
+    st_std = st_arr.std(axis=(0, 1), keepdims=True) + 1e-5
+
+    recolored = (src_arr - src_mean) * (st_std / src_std) + st_mean
+    recolored = np.clip(0.68 * recolored + 0.32 * src_arr, 0, 255)
+
+    # Blend subtle high-frequency brushwork texture from the style image
+    st_blur = np.asarray(st.filter(ImageFilter.GaussianBlur(radius=6)), dtype=np.float32)
+    st_detail = st_arr - st_blur
+    stylized_arr = np.clip(recolored + 0.42 * st_detail, 0, 255).astype(np.uint8)
+
+    out = Image.fromarray(stylized_arr, mode='RGB')
+    out = out.filter(ImageFilter.SMOOTH_MORE)
+    out = ImageEnhance.Color(out).enhance(1.18)
+    out = ImageEnhance.Contrast(out).enhance(1.08)
+    return out
+
+
 def _generate_image_via_api(image_path, style, output_path, style_data_url=None):
     out_width = int(os.environ.get('IMAGE_API_WIDTH', '512'))
     out_height = int(os.environ.get('IMAGE_API_HEIGHT', '384'))
+    style_path = os.path.join(STYLE_DIR, style['file'])
     source_data_url = _encode_image_data_url(image_path)
     if style_data_url is None:
-        style_data_url = _encode_image_data_url(os.path.join(STYLE_DIR, style['file']))
+        style_data_url = _encode_image_data_url(style_path)
 
     prompt = (
         'Strictly apply strong neural style transfer from Image 2 (the style artwork) onto Image 1 (the photograph). '
@@ -311,9 +346,15 @@ def _generate_image_via_api(image_path, style, output_path, style_data_url=None)
         'texture and palette faithfully. Keep only the person\'s identity, facial features, pose, and composition from Image 1. '
         'Style reference: {} ({}). Return only the fully stylized image.'
     ).format(style['name'], style.get('mood', style['name']))
-    image_bytes = _call_image_api(prompt, source_data_url, style_data_url, out_width, out_height)
-    with open(output_path, 'wb') as output:
-        output.write(image_bytes)
+    try:
+        image_bytes = _call_image_api(prompt, source_data_url, style_data_url, out_width, out_height)
+        with open(output_path, 'wb') as output:
+            output.write(image_bytes)
+    except Exception as exc:
+        print(f'[*] Qwen API fallback triggered for {os.path.basename(image_path)}: {exc}')
+        with Image.open(image_path) as src:
+            fallback = _stylize_fallback_pil(_cover_image(src, (out_width, out_height)), style_path)
+            fallback.save(output_path, format='PNG')
 
 
 def _generate_batch_grid_via_api(image_paths, style, output_paths, style_data_url=None):
@@ -346,9 +387,10 @@ def _generate_batch_grid_via_api(image_paths, style, output_paths, style_data_ur
         grid_img.paste(tile, (x0, y0))
         boxes.append((x0, y0, x0 + tile_w, y0 + tile_h))
 
+    style_path = os.path.join(STYLE_DIR, style['file'])
     source_data_url = _encode_pil_data_url(grid_img)
     if style_data_url is None:
-        style_data_url = _encode_image_data_url(os.path.join(STYLE_DIR, style['file']))
+        style_data_url = _encode_image_data_url(style_path)
 
     prompt = (
         'Image 1 is a collage containing {} separate photographs inside white grid borders. '
@@ -359,16 +401,23 @@ def _generate_batch_grid_via_api(image_paths, style, output_paths, style_data_ur
         'shifting, or merging the {} photos.'
     ).format(count, style['name'], style.get('mood', style['name']), count, count, count)
 
-    image_bytes = _call_image_api(prompt, source_data_url, style_data_url, grid_w, grid_h)
-    with Image.open(BytesIO(image_bytes)) as rendered:
-        rendered_rgb = rendered.convert('RGB')
-        if rendered_rgb.size != (grid_w, grid_h):
-            rendered_rgb = rendered_rgb.resize((grid_w, grid_h), resample=LANCZOS)
+    try:
+        image_bytes = _call_image_api(prompt, source_data_url, style_data_url, grid_w, grid_h)
+        with Image.open(BytesIO(image_bytes)) as rendered:
+            rendered_rgb = rendered.convert('RGB')
+            if rendered_rgb.size != (grid_w, grid_h):
+                rendered_rgb = rendered_rgb.resize((grid_w, grid_h), resample=LANCZOS)
 
-    inset = 4
-    for (x0, y0, x1, y1), output_path in zip(boxes, output_paths):
-        crop_box = (x0 + inset, y0 + inset, max(x0 + inset + 1, x1 - inset), max(y0 + inset + 1, y1 - inset))
-        rendered_rgb.crop(crop_box).save(output_path, format='PNG')
+        inset = 4
+        for (x0, y0, x1, y1), output_path in zip(boxes, output_paths):
+            crop_box = (x0 + inset, y0 + inset, max(x0 + inset + 1, x1 - inset), max(y0 + inset + 1, y1 - inset))
+            rendered_rgb.crop(crop_box).save(output_path, format='PNG')
+    except Exception as exc:
+        print(f'[*] Qwen Grid API fallback triggered: {exc}')
+        for image_path, output_path in zip(image_paths, output_paths):
+            with Image.open(image_path) as src:
+                fallback = _stylize_fallback_pil(_cover_image(src, (512, 384)), style_path)
+                fallback.save(output_path, format='PNG')
 
 
 def _precompute_subject_masks(original_paths, selected_indices):
@@ -481,7 +530,7 @@ def _make_outputs(job_path, original_paths, styled_paths, selected_indices, gues
     return gif_path, mp4_path, jpg_bg_path, jpg_nobg_path, zip_path
 
 
-def run_job(job_id, image_paths, selected_indices, style, guest_name):
+def run_job(job_id, image_paths, selected_indices, style, guest_name, guest_email=None):
     job_path = os.path.join(JOB_DIR, job_id)
     processed_dir = os.path.join(job_path, 'processed')
     os.makedirs(processed_dir, exist_ok=True)
@@ -582,6 +631,7 @@ def run_job(job_id, image_paths, selected_indices, style, guest_name):
             'frame': 'studio-sela-frame.jpg',
             'zip': 'studio-sela-semua-karya.zip',
             'guest_name': guest_name,
+            'guest_email': guest_email or '',
             'progress': 100,
             'phase': 'Selesai',
         }
@@ -589,6 +639,18 @@ def run_job(job_id, image_paths, selected_indices, style, guest_name):
             done_payload['mp4'] = 'studio-sela-musik.mp4'
         if jpg_nobg_path and os.path.isfile(jpg_nobg_path):
             done_payload['frame_nobg'] = 'studio-sela-frame-nobg.jpg'
+
+        if guest_email and '@' in guest_email:
+            _update_progress(job_id, 'Mengunggah ke Google Drive & mengirim link ke email...', 98)
+            drive_res = gdrive_uploader.upload_job_to_drive(
+                job_id, job_path, guest_name, guest_email=guest_email
+            )
+            if drive_res.get('success'):
+                done_payload['drive_url'] = drive_res['drive_url']
+                done_payload['qr_base64'] = drive_res['qr_base64']
+                done_payload['email_sent'] = drive_res.get('email_sent', False)
+                done_payload['email_sent_to'] = drive_res.get('email_sent_to')
+
         with JOBS_LOCK:
             JOBS[job_id].update(done_payload)
     except Exception as exc:
@@ -626,6 +688,9 @@ def create_capture():
     style_id = request.form.get('style')
     selected_value = request.form.get('selected', '')
     guest_name = ' '.join(request.form.get('guest_name', '').split())[:32]
+    guest_email = request.form.get('guest_email', '').strip()[:96]
+    if not guest_name and guest_email and '@' in guest_name:
+        guest_name = guest_email.split('@', 1)[0][:32]
     style = next((item for item in STYLES if item['id'] == style_id), None)
     if len(images) != 5 or any(not image.filename for image in images):
         return jsonify(error='Sesi harus berisi tepat 5 foto.'), 400
@@ -656,10 +721,10 @@ def create_capture():
     with JOBS_LOCK:
         JOBS[job_id] = {
             'status': 'processing', 'style': style['name'], 'progress': 0,
-            'phase': 'Menyiapkan job...',
+            'phase': 'Menyiapkan job...', 'guest_email': guest_email,
         }
     if os.environ.get('VERCEL'):
-        run_job(job_id, image_paths, selected_indices, style, guest_name)
+        run_job(job_id, image_paths, selected_indices, style, guest_name, guest_email=guest_email)
         with JOBS_LOCK:
             job = dict(JOBS.get(job_id, {}))
         if job.get('status') == 'error':
@@ -674,9 +739,13 @@ def create_capture():
             style=job.get('style', style['name']),
             gif_url=gif_b64,
             frame_url=frame_b64,
+            drive_url=job.get('drive_url'),
+            qr_base64=job.get('qr_base64'),
+            email_sent=job.get('email_sent', False),
+            email_sent_to=job.get('email_sent_to') or guest_email,
         ), 200
     threading.Thread(target=run_job,
-                     args=(job_id, image_paths, selected_indices, style, guest_name),
+                     args=(job_id, image_paths, selected_indices, style, guest_name, guest_email),
                      daemon=True).start()
     return jsonify(job_id=job_id), 202
 
@@ -712,17 +781,20 @@ def upload_drive(job_id):
         if job.get('status') != 'done':
             return jsonify(error='Hasil foto belum siap diunggah.'), 409
         guest_name = job.get('guest_name', 'Tamu')
+        guest_email = job.get('guest_email', '')
         # Return cached drive url if already uploaded
         if job.get('drive_url') and job.get('qr_base64'):
             return jsonify({
                 'success': True,
                 'needs_setup': False,
                 'drive_url': job['drive_url'],
-                'qr_base64': job['qr_base64']
+                'qr_base64': job['qr_base64'],
+                'email_sent': job.get('email_sent', False),
+                'email_sent_to': job.get('email_sent_to') or guest_email,
             })
 
     job_path = os.path.join(JOB_DIR, job_id)
-    result = gdrive_uploader.upload_job_to_drive(job_id, job_path, guest_name)
+    result = gdrive_uploader.upload_job_to_drive(job_id, job_path, guest_name, guest_email=guest_email)
     with JOBS_LOCK:
         if job_id in JOBS and result.get('success'):
             JOBS[job_id]['drive_url'] = result['drive_url']
