@@ -837,21 +837,30 @@
     try {
       const res = await fetch(src);
       const blob = await res.blob();
-      const blobUrl = URL.createObjectURL(blob);
+      const file = new File([blob], 'pixora-story.jpg', { type: 'image/jpeg' });
 
-      // Pilihan B: Otomatis unduh foto ke galeri HP tanpa Share Sheet, lalu langsung buka kamera Instagram Story
+      // Web Share API Level 2 (Android Chrome & iOS Safari):
+      // Pilih "Instagram -> Stories" untuk langsung membuka aplikasi Instagram di mode edit Story!
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: 'Pixora Story',
+        });
+        return;
+      }
+
+      // Fallback jika browser tidak mendukung file share: simpan foto & buka kamera Story Instagram
       const a = document.createElement('a');
-      a.href = blobUrl;
-      a.download = `pixora-story-${Date.now()}.jpg`;
+      a.href = URL.createObjectURL(blob);
+      a.download = 'pixora-story.jpg';
       document.body.appendChild(a);
       a.click();
       a.remove();
-
       setTimeout(() => {
-        URL.revokeObjectURL(blobUrl);
         window.location.href = 'instagram://story-camera';
-      }, 400);
-    } catch (_) {
+      }, 450);
+    } catch (err) {
+      if (err && err.name === 'AbortError') return;
       window.location.href = 'instagram://story-camera';
     }
   }
