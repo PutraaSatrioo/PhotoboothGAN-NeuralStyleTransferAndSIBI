@@ -205,7 +205,7 @@ def _get_http_session():
 
 def _encode_pil_data_url(image, quality=None):
     if quality is None:
-        quality = int(os.environ.get('IMAGE_API_JPEG_QUALITY', '92'))
+        quality = int(os.environ.get('IMAGE_API_JPEG_QUALITY', '82'))
     buffer = BytesIO()
     image.convert('RGB').save(buffer, format='JPEG', quality=quality, optimize=True)
     encoded = base64.b64encode(buffer.getvalue()).decode('ascii')
@@ -214,7 +214,7 @@ def _encode_pil_data_url(image, quality=None):
 
 def _encode_image_data_url(path, max_dim=None, quality=None):
     if max_dim is None:
-        max_dim = int(os.environ.get('IMAGE_API_MAX_INPUT', '1024'))
+        max_dim = int(os.environ.get('IMAGE_API_MAX_INPUT', '384'))
     with Image.open(path) as image:
         contained = ImageOps.contain(image.convert('RGB'), (max_dim, max_dim), method=LANCZOS)
     return _encode_pil_data_url(contained, quality=quality)
@@ -322,8 +322,8 @@ def _generate_batch_grid_via_api(image_paths, style, output_paths, style_data_ur
     if count == 0 or count > 6:
         raise ValueError('Grid batch hanya mendukung 1 sampai 6 foto.')
 
-    default_grid_w = '832' if os.environ.get('VERCEL') else '1280'
-    default_grid_h = '448' if os.environ.get('VERCEL') else '640'
+    default_grid_w = '768'
+    default_grid_h = '512'
     grid_w = int(os.environ.get('IMAGE_API_GRID_WIDTH', default_grid_w))
     grid_h = int(os.environ.get('IMAGE_API_GRID_HEIGHT', default_grid_h))
     cols = 3

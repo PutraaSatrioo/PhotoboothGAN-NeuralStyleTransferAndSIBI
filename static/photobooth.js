@@ -415,7 +415,25 @@
     });
   }
 
+  let mobileAutoCaptureTimer = null;
+
+  function triggerMobileFullscreenCapture() {
+    clearTimeout(mobileAutoCaptureTimer);
+    if (captureSequenceActive) return;
+    requestTrueFullscreen();
+    const camColumn = document.getElementById('camera-column');
+    if (camColumn) {
+      camColumn.classList.remove('mobile-manual-fullscreen');
+      camColumn.classList.add('mobile-capture-fullscreen');
+    }
+    if (video && video.paused && cameraStream) {
+      video.play().catch(() => {});
+    }
+    startAutoBurstCapture();
+  }
+
   function setMobileStep(step) {
+    clearTimeout(mobileAutoCaptureTimer);
     document.body.dataset.mobileStep = step;
     const mobileWelcome = document.getElementById('mobile-welcome-screen');
     const appEl = document.getElementById('photobooth-app');
@@ -441,16 +459,29 @@
       if (camControls) camControls.hidden = false;
       const pill = document.getElementById('mobile-active-style-pill');
       if (pill) pill.textContent = `Style: ${activeStyleName}`;
-      cameraFrame.prepend(video);
+      if (video.parentElement !== cameraFrame) {
+        cameraFrame.prepend(video);
+      }
       video.hidden = !cameraStream;
       placeholder.hidden = !!cameraStream;
-      if (!cameraStream) startCamera();
+      if (!cameraStream) {
+        startCamera();
+      } else if (video.paused) {
+        video.play().catch(() => {});
+      }
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   }
 
   function openMobileCameraStep() {
+    requestTrueFullscreen();
     setMobileStep('camera');
+    // Otomatis masuk layar penuh & mulai jepret 5 foto setelah jeda singkat
+    mobileAutoCaptureTimer = setTimeout(() => {
+      if (document.body.dataset.mobileStep === 'camera' && !captureSequenceActive) {
+        triggerMobileFullscreenCapture();
+      }
+    }, 900);
   }
 
   async function startAutoBurstCapture() {
@@ -788,6 +819,7 @@
     const btn = e.currentTarget;
     const content = document.getElementById('mobile-welcome-content');
     if (btn.classList.contains('is-starting')) return;
+    requestTrueFullscreen();
     btn.classList.add('is-starting');
     if (content) content.classList.add('is-leaving');
     setTimeout(() => {
@@ -798,6 +830,7 @@
   });
 
   document.getElementById('mobile-back-style-btn')?.addEventListener('click', () => {
+    clearTimeout(mobileAutoCaptureTimer);
     if (captureSequenceActive) return;
     setMobileStep('style');
   });
@@ -824,27 +857,11 @@
   }
 
   document.getElementById('mobile-fullscreen-btn')?.addEventListener('click', () => {
-    const camColumn = document.getElementById('camera-column');
-    if (!camColumn) return;
-    const isNowFull = !(document.fullscreenElement || document.webkitFullscreenElement);
-    if (isNowFull) {
-      requestTrueFullscreen();
-      camColumn.classList.add('mobile-manual-fullscreen');
-    } else {
-      exitTrueFullscreen();
-      camColumn.classList.remove('mobile-manual-fullscreen');
-    }
+    triggerMobileFullscreenCapture();
   });
 
   document.getElementById('mobile-shutter-btn')?.addEventListener('click', () => {
-    if (captureSequenceActive) return;
-    requestTrueFullscreen();
-    const camColumn = document.getElementById('camera-column');
-    if (camColumn) {
-      camColumn.classList.remove('mobile-manual-fullscreen');
-      camColumn.classList.add('mobile-capture-fullscreen');
-    }
-    startAutoBurstCapture();
+    triggerMobileFullscreenCapture();
   });
 
   function resetForAnotherPhotoSession() {
