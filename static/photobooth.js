@@ -729,8 +729,15 @@
     }
 
     processing.hidden = true;
+    const btnIg = document.getElementById('btn-upload-ig');
+    const btnDrive = document.getElementById('btn-upload-drive');
     if (isMobile) {
       document.body.dataset.mobileStep = 'result';
+      if (btnIg) btnIg.hidden = false;
+      if (btnDrive) btnDrive.hidden = true;
+    } else {
+      if (btnIg) btnIg.hidden = true;
+      if (btnDrive) btnDrive.hidden = false;
     }
     document.getElementById('result-section').hidden = false;
     if (!isMobile) {
@@ -820,14 +827,57 @@
     }
   }
 
+  async function shareFrameToInstagramStory() {
+    const frameImg = document.getElementById('frame-image');
+    const src = frameImg ? frameImg.src : '';
+    if (!src) {
+      notify('Gambar frame belum siap.');
+      return;
+    }
+    try {
+      const res = await fetch(src);
+      const blob = await res.blob();
+      const file = new File([blob], 'pixora-story.jpg', { type: 'image/jpeg' });
+
+      // Web Share API Level 2 (Android Chrome & iOS Safari):
+      // Pilih "Instagram -> Stories" untuk langsung membuka aplikasi Instagram di mode edit Story!
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: 'Pixora Story',
+        });
+        return;
+      }
+
+      // Fallback jika browser tidak mendukung file share: simpan foto & buka kamera Story Instagram
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'pixora-story.jpg';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => {
+        window.location.href = 'instagram://story-camera';
+      }, 450);
+    } catch (err) {
+      if (err && err.name === 'AbortError') return;
+      window.location.href = 'instagram://story-camera';
+    }
+  }
+
   function openQrModal() {
     if (!currentJobId) return;
     if (qrModal) qrModal.hidden = false;
-    // Upload Instagram dinonaktifkan sementara; hanya unggah ke Google Drive
     doDriveUpload();
   }
 
-  document.getElementById('btn-upload-ig')?.addEventListener('click', openQrModal);
+  document.getElementById('btn-upload-ig')?.addEventListener('click', () => {
+    if (isMobile) {
+      shareFrameToInstagramStory();
+    } else {
+      openQrModal();
+    }
+  });
   document.getElementById('btn-upload-drive')?.addEventListener('click', openQrModal);
 
   if (qrCloseBtn && qrModal) {
