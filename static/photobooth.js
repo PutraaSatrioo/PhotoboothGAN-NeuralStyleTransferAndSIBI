@@ -32,13 +32,6 @@
   let skipWaitingCurrentJob = false;
   const skippedJobIds = new Set();
 
-  // Realtime Neural Style Transfer preview state
-  const realtimeCanvas = document.getElementById('realtime-style-canvas');
-  const liveStyleBadge = document.getElementById('live-style-badge');
-  let realtimeStyleEnabled = true;
-  const styleAssetsCache = {};
-  let activeStyleAsset = null;
-
   let sibiModel = null;
   let sibiCandidate = '';
   let sibiCandidateSince = 0;
@@ -362,147 +355,6 @@
   placeholder?.addEventListener('click', () => { if (!cameraStream) startCamera(); });
 
   // ---------------------------------------------------------------------------
-  // Realtime Lightweight Neural Style Transfer Preview (Canvas 2D)
-  // ---------------------------------------------------------------------------
-
-  function loadRealtimeStyleAsset(styleId) {
-    if (!styleId) return;
-    if (styleAssetsCache[styleId]) {
-      activeStyleAsset = styleAssetsCache[styleId];
-      return;
-    }
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      const sampleW = 64, sampleH = 64;
-      const c = document.createElement('canvas');
-      c.width = sampleW;
-      c.height = sampleH;
-      const ctx = c.getContext('2d');
-      ctx.drawImage(img, 0, 0, sampleW, sampleH);
-      const data = ctx.getImageData(0, 0, sampleW, sampleH).data;
-      let sumR = 0, sumG = 0, sumB = 0;
-      const count = sampleW * sampleH;
-      for (let i = 0; i < data.length; i += 4) {
-        sumR += data[i];
-        sumG += data[i + 1];
-        sumB += data[i + 2];
-      }
-      const meanR = sumR / count, meanG = sumG / count, meanB = sumB / count;
-      let varR = 0, varG = 0, varB = 0;
-      for (let i = 0; i < data.length; i += 4) {
-        varR += (data[i] - meanR) ** 2;
-        varG += (data[i + 1] - meanG) ** 2;
-        varB += (data[i + 2] - meanB) ** 2;
-      }
-      const asset = {
-        img,
-        meanR, meanG, meanB,
-        stdR: Math.sqrt(varR / count) + 1,
-        stdG: Math.sqrt(varG / count) + 1,
-        stdB: Math.sqrt(varB / count) + 1,
-      };
-      styleAssetsCache[styleId] = asset;
-      if (activeStyleId === styleId) activeStyleAsset = asset;
-    };
-    img.src = `/styles/${styleId}.jpg`;
-  }
-
-  function applyRealtimeStyleToCanvas(sourceVideoOrCanvas, targetCanvas, width, height) {
-    targetCanvas.width = width;
-    targetCanvas.height = height;
-    const ctx = targetCanvas.getContext('2d', { willReadFrequently: true });
-    ctx.save();
-    ctx.setTransform(-1, 0, 0, 1, width, height === sourceVideoOrCanvas.height ? 0 : 0);
-    ctx.drawImage(sourceVideoOrCanvas, 0, 0, width, height);
-    ctx.restore();
-
-    if (!activeStyleAsset) return;
-    const frame = ctx.getImageData(0, 0, width, height);
-    const d = frame.data;
-    const count = width * height;
-    let sR = 0, sG = 0, sB = 0;
-    // Subsample every 4th pixel for ultra-fast mean/std
-    let samples = 0;
-    for (let i = 0; i < d.length; i += 16) {
-      sR += d[i];
-      sG += d[i + 1];
-      sB += d[i + 2];
-      samples++;
-    }
-    const mR = sR / samples, mG = sG / samples, mB = sB / samples;
-    let vR = 0, vG = 0, vB = 0;
-    for (let i = 0; i < d.length; i += 16) {
-      vR += (d[i] - mR) ** 2;
-      vG += (d[i + 1] - mG) ** 2;
-      vB += (d[i + 2] - mB) ** 2;
-    }
-    const stdR = Math.sqrt(vR / samples) + 1;
-    const stdG = Math.sqrt(vG / samples) + 1;
-    const stdB = Math.sqrt(vB / samples) + 1;
-
-    const scaleR = Math.min(1.6, Math.max(0.6, activeStyleAsset.stdR / stdR));
-    const scaleG = Math.min(1.6, Math.max(0.6, activeStyleAsset.stdG / stdG));
-    const scaleB = Math.min(1.6, Math.max(0.6, activeStyleAsset.stdB / stdB));
-    const tMeanR = activeStyleAsset.meanR;
-    const tMeanG = activeStyleAsset.meanG;
-    const tMeanB = activeStyleAsset.meanB;
-
-    // Apply Reinhard color transfer + painterly quantization
-    for (let i = 0; i < d.length; i += 4) {
-      const r0 = d[i], g0 = d[i + 1], b0 = d[i + 2];
-      const nr = (r0 - mR) * scaleR + tMeanR;
-      const ng = (g0 - mG) * scaleG + tMeanG;
-      const nb = (b0 - mB) * scaleB + tMeanB;
-      // Blend 62% style palette + 38% natural face tone
-      d[i]     = Math.min(255, Math.max(0, r0 * 0.38 + nr * 0.62));
-      d[i + 1] = Math.min(255, Math.max(0, g0 * 0.38 + ng * 0.62));
-      d[i + 2] = Math.min(255, Math.max(0, b0 * 0.38 + nb * 0.62));
-    }
-    ctx.putImageData(frame, 0, 0);
-
-    // Overlay actual brushwork/motif texture from the style reference image
-    ctx.save();
-    ctx.globalAlpha = 0.24;
-    ctx.globalCompositeOperation = 'overlay';
-    ctx.drawImage(activeStyleAsset.img, 0, 0, width, height);
-    ctx.restore();
-  }
-
-  function startRealtimeStyleLoop() {
-    if (!realtimeCanvas) return;
-    loadRealtimeStyleAsset(activeStyleId);
-
-    let lastRender = 0;
-    function tick(now) {
-      requestAnimationFrame(tick);
-      if (!realtimeStyleEnabled || !cameraStream || video.paused || video.readyState < 2) {
-        realtimeCanvas.hidden = true;
-        return;
-      }
-      // Only render when Screen 2 camera is visible
-      const appHidden = document.getElementById('photobooth-app')?.hidden;
-      const gridHidden = document.querySelector('.booth-grid')?.hidden;
-      if (appHidden || gridHidden || (isMobile && document.body.dataset.mobileStep !== 'camera')) {
-        realtimeCanvas.hidden = true;
-        return;
-      }
-      if (now - lastRender < 48) return; // ~20 FPS lightweight render
-      lastRender = now;
-      realtimeCanvas.hidden = false;
-      applyRealtimeStyleToCanvas(video, realtimeCanvas, 288, 216);
-    }
-    requestAnimationFrame(tick);
-  }
-
-  liveStyleBadge?.addEventListener('click', () => {
-    realtimeStyleEnabled = !realtimeStyleEnabled;
-    liveStyleBadge.textContent = realtimeStyleEnabled ? '✨ REALTIME STYLE: ON' : '✨ REALTIME STYLE: OFF';
-    liveStyleBadge.classList.toggle('is-off', !realtimeStyleEnabled);
-    if (realtimeCanvas) realtimeCanvas.hidden = !realtimeStyleEnabled;
-  });
-
-  // ---------------------------------------------------------------------------
   // Screen 1: "DONE" -> Move to Screen 2
   // ---------------------------------------------------------------------------
 
@@ -529,7 +381,6 @@
     cameraFrame.prepend(video);
     video.hidden = !cameraStream;
     placeholder.hidden = !!cameraStream;
-    loadRealtimeStyleAsset(activeStyleId);
 
     document.getElementById('welcome-screen').hidden = true;
     document.getElementById('photobooth-app').hidden = false;
@@ -551,7 +402,6 @@
         const styleName = card.dataset.name || card.querySelector('.style-name')?.textContent || styleId;
         activeStyleId = styleId;
         activeStyleName = styleName;
-        loadRealtimeStyleAsset(styleId);
 
         styleCards.forEach(c => {
           c.classList.remove('selected', 'style-popping');
@@ -670,20 +520,9 @@
         const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', jpegQuality));
         if (!blob) throw new Error('Gagal mengambil frame foto.');
 
-        // Create lightweight realtime stylized preview thumbnail for instant picker preview
-        let previewUrl = URL.createObjectURL(blob);
-        try {
-          if (activeStyleAsset) {
-            const pCanvas = document.createElement('canvas');
-            applyRealtimeStyleToCanvas(video, pCanvas, 384, 288);
-            const pBlob = await new Promise(res => pCanvas.toBlob(res, 'image/jpeg', 0.86));
-            if (pBlob) previewUrl = URL.createObjectURL(pBlob);
-          }
-        } catch (_) {}
-
         capturedPhotos.push({
           blob,
-          url: previewUrl,
+          url: URL.createObjectURL(blob),
           name: `capture_${shot}.jpg`
         });
 
@@ -1235,5 +1074,4 @@
     loadSibiModel();
   }
   startCamera();
-  startRealtimeStyleLoop();
 })();

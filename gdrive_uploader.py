@@ -17,17 +17,20 @@ SCOPES = ['https://www.googleapis.com/auth/drive']
 
 
 def get_parent_folder_id():
-    """Read a Drive folder ID, accepting UTF-8 files with or without a BOM."""
+    """Read a Drive folder ID from env or gdrive_config.json."""
+    env_folder = os.environ.get('GDRIVE_FOLDER_ID', '').strip()
+    if env_folder:
+        return env_folder
     if not os.path.isfile(CONFIG_FILE):
-        return None
+        return '1UGrNGDPlzmXrKb9IHTIW5jhSZ_G0kbUC'
     try:
         with open(CONFIG_FILE, 'r', encoding='utf-8-sig') as config_file:
             data = json.load(config_file)
         folder_id = data.get('folder_id') or data.get('parent_folder_id')
-        return folder_id.strip() if isinstance(folder_id, str) and folder_id.strip() else None
+        return folder_id.strip() if isinstance(folder_id, str) and folder_id.strip() else '1UGrNGDPlzmXrKb9IHTIW5jhSZ_G0kbUC'
     except Exception as exc:
         print(f'[Google Drive] Gagal membaca {CONFIG_FILE}: {exc}', file=sys.stderr)
-        return None
+        return '1UGrNGDPlzmXrKb9IHTIW5jhSZ_G0kbUC'
 
 
 def generate_qr_base64(url):
@@ -53,24 +56,35 @@ def _get_oauth_credentials():
     from google_auth_oauthlib.flow import InstalledAppFlow
 
     credentials = None
-    if os.path.isfile(TOKEN_FILE):
-        credentials = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
+    tmp_token_file = '/tmp/token.json' if os.environ.get('VERCEL') else TOKEN_FILE
+    token_env = os.environ.get('GDRIVE_TOKEN_JSON', '').strip()
 
-    if credentials and credentials.expired and credentials.refresh_token:
+    if os.path.isfile(tmp_token_file):
+        credentials = Credentials.from_authorized_user_file(tmp_token_file, SCOPES)
+    elif os.path.isfile(TOKEN_FILE):
+        credentials = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
+    elif token_env:
+        credentials = Credentials.from_authorized_user_info(json.loads(token_env), SCOPES)
+
+    if credentials and (credentials.expired or not credentials.valid) and credentials.refresh_token:
         credentials.refresh(Request())
 
     if not credentials or not credentials.valid:
+        if os.environ.get('VERCEL'):
+            raise RuntimeError('Token OAuth Google Drive belum valid di server.')
         if not os.path.isfile(OAUTH_CLIENT_FILE):
             raise FileNotFoundError(
                 'File client_secret.json belum ada. Unduh OAuth Client ID jenis Desktop app '
                 'dari Google Cloud Console dan simpan di root proyek.'
             )
         flow = InstalledAppFlow.from_client_secrets_file(OAUTH_CLIENT_FILE, SCOPES)
-        # The local server receives Google's redirect while the user signs in.
         credentials = flow.run_local_server(host='127.0.0.1', port=0, open_browser=True)
 
-    with open(TOKEN_FILE, 'w', encoding='utf-8') as token_file:
-        token_file.write(credentials.to_json())
+    try:
+        with open(tmp_token_file, 'w', encoding='utf-8') as token_file:
+            token_file.write(credentials.to_json())
+    except OSError:
+        pass
     return credentials
 
 
