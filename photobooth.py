@@ -246,6 +246,93 @@ def _resolve_ai_model(ai_model_key=None):
     return AI_MODELS.get(key, AI_MODELS['qwen'])
 
 
+def _call_bonsai_generations_api(prompt, size='512x512'):
+    """Call Bonsai Ternary 4B on /v1/images/generations as specified in Postman collection 2."""
+    api_key = os.environ.get('IMAGE_API_KEY', '').strip()
+    if not api_key:
+        raise RuntimeError('IMAGE_API_KEY belum diisi di file .env.')
+    chat_url = os.environ.get('IMAGE_API_URL', 'https://bifrost.hcm-lab.id/v1/chat/completions').strip()
+    base_url = chat_url.split('/v1/')[0] if '/v1/' in chat_url else 'https://bifrost.hcm-lab.id'
+    endpoint = os.environ.get('BONSAI_API_URL', base_url + '/v1/images/generations').strip()
+    model_cfg = _resolve_ai_model('bonsai')
+    timeout = int(os.environ.get('IMAGE_API_TIMEOUT', '180'))
+
+    payload = {
+        'model': model_cfg['model'],
+        'prompt': prompt,
+        'size': size,
+        'num_inference_steps': int(model_cfg.get('steps') or 4),
+        'guidance_scale': float(model_cfg.get('guidance_scale') or 1.0),
+        'seed': 42,
+        'response_format': 'b64_json',
+    }
+    session = _get_http_session()
+    max_retries = 2
+    result = None
+    for attempt in range(max_retries + 1):
+        try:
+            response = session.post(
+                endpoint,
+                json=payload,
+                headers={'Content-Type': 'application/json', 'x-api-key': api_key},
+                timeout=timeout,
+            )
+            response.raise_for_status()
+            result = response.json()
+            break
+        except requests.HTTPError as exc:
+            code = exc.response.status_code if exc.response is not None else 0
+            if code in (502, 503, 504) and attempt < max_retries:
+                time.sleep(1.2 * (attempt + 1))
+                continue
+            detail = exc.response.text[:600] if exc.response is not None else str(exc)
+            raise RuntimeError('Bonsai API HTTP {}: {}'.format(code or 'Error', detail)) from exc
+        except requests.RequestException as exc:
+            if attempt < max_retries:
+                time.sleep(1.2 * (attempt + 1))
+                continue
+            raise RuntimeError('Tidak dapat menghubungi Bonsai API: {}'.format(exc)) from exc
+    try:
+        b64_data = result['data'][0]['b64_json']
+        if ',' in b64_data:
+            b64_data = b64_data.split(',', 1)[1]
+        image_bytes = base64.b64decode(b64_data)
+        with Image.open(BytesIO(image_bytes)) as generated:
+            generated.verify()
+        return image_bytes
+    except (KeyError, IndexError, TypeError, ValueError) as exc:
+        raise RuntimeError('Format response Bonsai API tidak dikenali: {}'.format(exc)) from exc
+
+
+def _generate_bonsai_batch_via_api(image_paths, style, output_paths):
+    """Generate style artwork via Bonsai 4B (/v1/images/generations) and transfer onto all 5 photos."""
+    style_path = os.path.join(STYLE_DIR, style['file'])
+    prompt = (
+        ' Rich artistic neural style transfer reference artwork in the style of {} ({}). '
+        'Vibrant painterly brushwork, expressive surface texture, and vivid artistic palette.'
+    ).format(style['name'], style.get('mood', style['name'])).strip()
+
+    bonsai_style_path = style_path
+    temp_bonsai_file = None
+    try:
+        bonsai_bytes = _call_bonsai_generations_api(prompt, size='512x512')
+        temp_bonsai_file = os.path.join(os.path.dirname(output_paths[0]), 'bonsai_style_ref.png')
+        with open(temp_bonsai_file, 'wb') as f:
+            f.write(bonsai_bytes)
+        bonsai_style_path = temp_bonsai_file
+    except Exception as exc:
+        print(f'[*] Bonsai /v1/images/generations fallback to local style reference: {exc}')
+
+    for image_path, output_path in zip(image_paths, output_paths):
+        with Image.open(image_path) as src:
+            covered = _cover_image(src, (512, 384))
+            # Transfer both the chosen style reference and the Bonsai 4B generated texture
+            styled = _stylize_fallback_pil(covered, bonsai_style_path)
+            if bonsai_style_path != style_path and os.path.isfile(style_path):
+                styled = Image.blend(styled, _stylize_fallback_pil(covered, style_path), 0.45)
+            styled.save(output_path, format='PNG')
+
+
 def _call_image_api(prompt, source_data_url, style_data_url, out_width, out_height, ai_model_key='qwen'):
     api_key = os.environ.get('IMAGE_API_KEY', '').strip()
     if not api_key:
@@ -575,51 +662,61 @@ def run_job(job_id, image_paths, selected_indices, style, guest_name, guest_emai
         if engine == 'qwen':
             total = len(image_paths)
             styled_paths = [os.path.join(processed_dir, 'portrait_{:02d}.png'.format(i + 1)) for i in range(total)]
-            style_data_url = _encode_image_data_url(os.path.join(STYLE_DIR, style['file']))
-            # Bonsai 4B works best per-photo (4 steps), whereas Qwen 2.1 supports 5-in-1 grid
-            api_mode = 'single' if model_cfg['id'] == 'bonsai' else os.environ.get('IMAGE_API_MODE', 'grid').strip().lower()
-            if api_mode == 'grid' and 1 <= total <= 6:
-                _update_progress(job_id, 'Mengirim {} foto sekaligus ke {}...'.format(total, ai_label), 15)
+            if model_cfg['id'] == 'bonsai':
+                _update_progress(job_id, 'Mengolah {} foto dengan {}...'.format(total, ai_label), 20)
                 with ThreadPoolExecutor(max_workers=2) as executor:
                     mask_future = executor.submit(_precompute_subject_masks, image_paths, selected_indices)
-                    grid_future = executor.submit(
-                        _generate_batch_grid_via_api, image_paths, style, styled_paths, style_data_url, model_cfg['id']
-                    )
-                    grid_future.result()
-                    _update_progress(job_id, '{} selesai! Memisahkan 5 foto hasil...'.format(ai_label), 90)
+                    bonsai_future = executor.submit(_generate_bonsai_batch_via_api, image_paths, style, styled_paths)
+                    bonsai_future.result()
+                    _update_progress(job_id, '{} selesai mengolah {} foto!'.format(ai_label, total), 90)
                     try:
                         precomputed_masks = mask_future.result()
                     except Exception:
                         precomputed_masks = None
             else:
-                styled_paths = [None] * total
-                default_workers = '3' if model_cfg['id'] == 'bonsai' else '2'
-                max_workers = max(1, min(total, int(os.environ.get('IMAGE_API_WORKERS', default_workers))))
-                _update_progress(job_id, 'Mengirim foto ke {} (1/{})...'.format(ai_label, total), 10)
-                completed = 0
-                with ThreadPoolExecutor(max_workers=max_workers + 1) as executor:
-                    mask_future = executor.submit(_precompute_subject_masks, image_paths, selected_indices)
-                    future_to_idx = {}
-                    for index, image_path in enumerate(image_paths):
-                        output_path = os.path.join(processed_dir, 'portrait_{:02d}.png'.format(index + 1))
-                        fut = executor.submit(
-                            _generate_image_via_api, image_path, style, output_path, style_data_url, model_cfg['id']
+                style_data_url = _encode_image_data_url(os.path.join(STYLE_DIR, style['file']))
+                api_mode = os.environ.get('IMAGE_API_MODE', 'grid').strip().lower()
+                if api_mode == 'grid' and 1 <= total <= 6:
+                    _update_progress(job_id, 'Mengirim {} foto sekaligus ke {}...'.format(total, ai_label), 15)
+                    with ThreadPoolExecutor(max_workers=2) as executor:
+                        mask_future = executor.submit(_precompute_subject_masks, image_paths, selected_indices)
+                        grid_future = executor.submit(
+                            _generate_batch_grid_via_api, image_paths, style, styled_paths, style_data_url, model_cfg['id']
                         )
-                        future_to_idx[fut] = (index, output_path)
-                    for fut in as_completed(future_to_idx):
-                        idx, out_path = future_to_idx[fut]
-                        fut.result()
-                        styled_paths[idx] = out_path
-                        completed += 1
-                        _update_progress(
-                            job_id,
-                            '{} selesai mengolah {} dari {} foto'.format(ai_label, completed, total),
-                            10 + int(84 * completed / total),
-                        )
-                    try:
-                        precomputed_masks = mask_future.result()
-                    except Exception:
-                        precomputed_masks = None
+                        grid_future.result()
+                        _update_progress(job_id, '{} selesai! Memisahkan 5 foto hasil...'.format(ai_label), 90)
+                        try:
+                            precomputed_masks = mask_future.result()
+                        except Exception:
+                            precomputed_masks = None
+                else:
+                    styled_paths = [None] * total
+                    max_workers = max(1, min(total, int(os.environ.get('IMAGE_API_WORKERS', '2'))))
+                    _update_progress(job_id, 'Mengirim foto ke {} (1/{})...'.format(ai_label, total), 10)
+                    completed = 0
+                    with ThreadPoolExecutor(max_workers=max_workers + 1) as executor:
+                        mask_future = executor.submit(_precompute_subject_masks, image_paths, selected_indices)
+                        future_to_idx = {}
+                        for index, image_path in enumerate(image_paths):
+                            output_path = os.path.join(processed_dir, 'portrait_{:02d}.png'.format(index + 1))
+                            fut = executor.submit(
+                                _generate_image_via_api, image_path, style, output_path, style_data_url, model_cfg['id']
+                            )
+                            future_to_idx[fut] = (index, output_path)
+                        for fut in as_completed(future_to_idx):
+                            idx, out_path = future_to_idx[fut]
+                            fut.result()
+                            styled_paths[idx] = out_path
+                            completed += 1
+                            _update_progress(
+                                job_id,
+                                '{} selesai mengolah {} dari {} foto'.format(ai_label, completed, total),
+                                10 + int(84 * completed / total),
+                            )
+                        try:
+                            precomputed_masks = mask_future.result()
+                        except Exception:
+                            precomputed_masks = None
         elif engine == 'gatys_cpu':
             import neural_style_transfer as nst
             for index, image_path in enumerate(image_paths):
