@@ -45,16 +45,96 @@ JOB_DIR = '/tmp/photobooth' if os.environ.get('VERCEL') else os.path.join(ROOT, 
 MUSIC_DIR = os.path.join(ROOT, 'music')
 ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp'}
 STYLES = [
-    {'id': 'vg_starry_night', 'name': 'Starry Night', 'mood': 'Swirling, luminous brushstrokes'},
-    {'id': 'candy', 'name': 'Candy', 'mood': 'Bold color and playful texture'},
-    {'id': 'mosaic', 'name': 'Mosaic', 'mood': 'Colorful, tiled geometry'},
-    {'id': 'udnie', 'name': 'Udnie', 'mood': 'Energetic modernist shapes'},
-    {'id': 'wave_crop', 'name': 'The Wave', 'mood': 'Rolling blues and expressive lines'},
-    {'id': 'ben_giles', 'name': 'Ben Giles', 'mood': 'Dreamlike collage colors'},
-    {'id': 'vg_la_cafe', 'name': 'La Café', 'mood': 'Warm post-impressionist city light'},
-    {'id': 'flowers_crop', 'name': 'Flowers', 'mood': 'Soft floral color fields'},
-    {'id': 'batik', 'name': 'Batik', 'mood': 'Cream, teal, cobalt and terracotta motifs'},
-    {'id': 'contoh_hijau', 'name': 'Batik 2', 'mood': 'Green batik with cream linework'},
+    {
+        'id': 'vg_starry_night',
+        'name': 'Starry Night',
+        'mood': 'Swirling, luminous brushstrokes',
+        'prompt_desc': (
+            'Vincent van Gogh Starry Night oil painting style, thick swirling impasto brushstrokes, '
+            'deep cobalt blue, ultramarine, glowing golden yellow stars, and expressive post-impressionist canvas texture'
+        ),
+    },
+    {
+        'id': 'candy',
+        'name': 'Candy',
+        'mood': 'Bold color and playful texture',
+        'prompt_desc': (
+            'vibrant pop-art Candy oil painting style, bold saturated neon magenta, electric cyan, '
+            'warm orange and sunny yellow palette knife strokes, playful expressive contemporary painting'
+        ),
+    },
+    {
+        'id': 'mosaic',
+        'name': 'Mosaic',
+        'mood': 'Colorful, tiled geometry',
+        'prompt_desc': (
+            'stained-glass Mosaic artwork style, intricate colorful geometric ceramic tiles, '
+            'dark tesserae grout outlines, jewel-toned ruby, sapphire, emerald, and amber glass fragments'
+        ),
+    },
+    {
+        'id': 'udnie',
+        'name': 'Udnie',
+        'mood': 'Energetic modernist shapes',
+        'prompt_desc': (
+            'Francis Picabia Udnie cubist abstract modernist oil painting style, dynamic overlapping '
+            'geometric planes, rhythmic ribbons of crimson, ochre, slate blue, and ivory brushwork'
+        ),
+    },
+    {
+        'id': 'wave_crop',
+        'name': 'The Wave',
+        'mood': 'Rolling blues and expressive lines',
+        'prompt_desc': (
+            'Hokusai The Great Wave off Kanagawa ukiyo-e Japanese woodblock print style, Prussian blue '
+            'and indigo waves, crisp white seafoam claws, warm parchment tones, and traditional ink linework'
+        ),
+    },
+    {
+        'id': 'ben_giles',
+        'name': 'Ben Giles',
+        'mood': 'Dreamlike collage colors',
+        'prompt_desc': (
+            'Ben Giles surreal botanical collage art style, dreamlike vintage floral cutouts, '
+            'vibrant pastel blossoms, butterflies, and whimsical layered paper-art textures'
+        ),
+    },
+    {
+        'id': 'vg_la_cafe',
+        'name': 'La Café',
+        'mood': 'Warm post-impressionist city light',
+        'prompt_desc': (
+            'Vincent van Gogh Cafe Terrace at Night oil painting style, glowing warm amber and sulfur-yellow '
+            'lantern light contrasting with deep starry midnight blue cobblestones and thick post-impressionist brushwork'
+        ),
+    },
+    {
+        'id': 'flowers_crop',
+        'name': 'Flowers',
+        'mood': 'Soft floral color fields',
+        'prompt_desc': (
+            'impressionist blooming garden oil painting style, soft pastel rose pink, lavender, '
+            'sage green, and warm sunlit floral color fields with delicate painterly brushstrokes'
+        ),
+    },
+    {
+        'id': 'batik',
+        'name': 'Batik',
+        'mood': 'Cream, teal, cobalt and terracotta motifs',
+        'prompt_desc': (
+            'traditional Indonesian Batik tulis textile art style, intricate hand-drawn canting wax-resist '
+            'floral and parang motifs, rich cream, teal, cobalt blue, and terracotta fabric dye patterns'
+        ),
+    },
+    {
+        'id': 'contoh_hijau',
+        'name': 'Batik 2',
+        'mood': 'Green batik with cream linework',
+        'prompt_desc': (
+            'traditional Indonesian green Batik textile painting style, detailed emerald and forest green '
+            'batik cloth adorned with fine cream and golden canting wax linework and ornamental Nusantara motifs'
+        ),
+    },
 ]
 JOBS = {}
 JOBS_LOCK = threading.Lock()
@@ -227,6 +307,7 @@ AI_MODELS = {
         'model': os.environ.get('IMAGE_MODEL', 'Qwen/Qwen-Image-2.1').strip(),
         'steps': int(os.environ.get('IMAGE_API_STEPS', '8')),
         'guidance_scale': None,
+        'single_image_input': False,
     },
     'bonsai': {
         'id': 'bonsai',
@@ -235,8 +316,9 @@ AI_MODELS = {
             'BONSAI_IMAGE_MODEL',
             'vllm-omni/prism-ml/bonsai-image-ternary-4B-unpacked',
         ).strip(),
-        'steps': int(os.environ.get('BONSAI_API_STEPS', '4')),
-        'guidance_scale': float(os.environ.get('BONSAI_GUIDANCE_SCALE', '1.0')),
+        'steps': int(os.environ.get('BONSAI_API_STEPS', '8')),
+        'guidance_scale': float(os.environ.get('BONSAI_GUIDANCE_SCALE', '1.5')),
+        'single_image_input': True,
     },
 }
 
@@ -246,169 +328,99 @@ def _resolve_ai_model(ai_model_key=None):
     return AI_MODELS.get(key, AI_MODELS['qwen'])
 
 
-def _call_bonsai_generations_api(prompt, size='512x512'):
-    """Call Bonsai Ternary 4B on /v1/images/generations as specified in Postman collection 2."""
-    api_key = os.environ.get('IMAGE_API_KEY', '').strip()
-    if not api_key:
-        raise RuntimeError('IMAGE_API_KEY belum diisi di file .env.')
-    chat_url = os.environ.get('IMAGE_API_URL', 'https://bifrost.hcm-lab.id/v1/chat/completions').strip()
-    base_url = chat_url.split('/v1/')[0] if '/v1/' in chat_url else 'https://bifrost.hcm-lab.id'
-    endpoint = os.environ.get('BONSAI_API_URL', base_url + '/v1/images/generations').strip()
-    model_cfg = _resolve_ai_model('bonsai')
-    timeout = int(os.environ.get('IMAGE_API_TIMEOUT', '180'))
-
-    payload = {
-        'model': model_cfg['model'],
-        'prompt': prompt,
-        'size': size,
-        'num_inference_steps': int(model_cfg.get('steps') or 4),
-        'guidance_scale': float(model_cfg.get('guidance_scale') or 1.0),
-        'seed': 42,
-        'response_format': 'b64_json',
-    }
-    session = _get_http_session()
-    max_retries = 2
-    result = None
-    for attempt in range(max_retries + 1):
-        try:
-            response = session.post(
-                endpoint,
-                json=payload,
-                headers={'Content-Type': 'application/json', 'x-api-key': api_key},
-                timeout=timeout,
-            )
-            response.raise_for_status()
-            result = response.json()
+def _extract_image_bytes_from_chat_result(result, session):
+    content = result['choices'][0]['message']['content']
+    parts = content if isinstance(content, list) else [{'type': 'text', 'text': content}]
+    image_url = None
+    for part in parts:
+        if isinstance(part, dict) and (part.get('image_url') or part.get('image')):
+            value = part.get('image_url') or part.get('image')
+            image_url = value.get('url') if isinstance(value, dict) else value
             break
-        except requests.HTTPError as exc:
-            code = exc.response.status_code if exc.response is not None else 0
-            if code in (502, 503, 504) and attempt < max_retries:
-                time.sleep(1.2 * (attempt + 1))
-                continue
-            detail = exc.response.text[:600] if exc.response is not None else str(exc)
-            raise RuntimeError('Bonsai API HTTP {}: {}'.format(code or 'Error', detail)) from exc
-        except requests.RequestException as exc:
-            if attempt < max_retries:
-                time.sleep(1.2 * (attempt + 1))
-                continue
-            raise RuntimeError('Tidak dapat menghubungi Bonsai API: {}'.format(exc)) from exc
-    try:
-        b64_data = result['data'][0]['b64_json']
-        if ',' in b64_data:
-            b64_data = b64_data.split(',', 1)[1]
-        image_bytes = base64.b64decode(b64_data)
-        with Image.open(BytesIO(image_bytes)) as generated:
-            generated.verify()
-        return image_bytes
-    except (KeyError, IndexError, TypeError, ValueError) as exc:
-        raise RuntimeError('Format response Bonsai API tidak dikenali: {}'.format(exc)) from exc
+        text_value = part.get('text', '') if isinstance(part, dict) else ''
+        if text_value.startswith(('data:image/', 'https://', 'http://')):
+            image_url = text_value.strip()
+            break
+    if not image_url:
+        raise ValueError('Response tidak berisi image_url.')
+    if image_url.startswith('data:image/'):
+        image_bytes = base64.b64decode(image_url.split(',', 1)[1])
+    else:
+        image_response = session.get(image_url, timeout=60)
+        image_response.raise_for_status()
+        image_bytes = image_response.content
+    with Image.open(BytesIO(image_bytes)) as generated:
+        generated.verify()
+    return image_bytes
 
 
-def _generate_bonsai_batch_via_api(image_paths, style, output_paths):
-    """Generate style artwork via Bonsai 4B (/v1/images/generations) and transfer onto all 5 photos."""
-    style_path = os.path.join(STYLE_DIR, style['file'])
-    prompt = (
-        ' Rich artistic neural style transfer reference artwork in the style of {} ({}). '
-        'Vibrant painterly brushwork, expressive surface texture, and vivid artistic palette.'
-    ).format(style['name'], style.get('mood', style['name'])).strip()
-
-    bonsai_style_path = style_path
-    temp_bonsai_file = None
-    try:
-        bonsai_bytes = _call_bonsai_generations_api(prompt, size='512x512')
-        temp_bonsai_file = os.path.join(os.path.dirname(output_paths[0]), 'bonsai_style_ref.png')
-        with open(temp_bonsai_file, 'wb') as f:
-            f.write(bonsai_bytes)
-        bonsai_style_path = temp_bonsai_file
-    except Exception as exc:
-        print(f'[*] Bonsai /v1/images/generations fallback to local style reference: {exc}')
-
-    for image_path, output_path in zip(image_paths, output_paths):
-        with Image.open(image_path) as src:
-            covered = _cover_image(src, (512, 384))
-            # Transfer both the chosen style reference and the Bonsai 4B generated texture
-            styled = _stylize_fallback_pil(covered, bonsai_style_path)
-            if bonsai_style_path != style_path and os.path.isfile(style_path):
-                styled = Image.blend(styled, _stylize_fallback_pil(covered, style_path), 0.45)
-            styled.save(output_path, format='PNG')
-
-
-def _call_image_api(prompt, source_data_url, style_data_url, out_width, out_height, ai_model_key='qwen'):
+def _call_image_api(prompt, source_data_url, style_data_url, out_width, out_height, ai_model_key='qwen', bonsai_prompt=None):
     api_key = os.environ.get('IMAGE_API_KEY', '').strip()
     if not api_key:
         raise RuntimeError('IMAGE_API_KEY belum diisi di file .env.')
     endpoint = os.environ.get('IMAGE_API_URL', 'https://bifrost.hcm-lab.id/v1/chat/completions').strip()
     model_cfg = _resolve_ai_model(ai_model_key)
-    model = model_cfg['model']
     timeout = int(os.environ.get('IMAGE_API_TIMEOUT', '180'))
-
-    extra_body = {'height': out_height, 'width': out_width}
-    if model_cfg.get('steps') and model_cfg['steps'] > 0:
-        extra_body['num_inference_steps'] = int(model_cfg['steps'])
-    if model_cfg.get('guidance_scale') is not None:
-        extra_body['guidance_scale'] = float(model_cfg['guidance_scale'])
-
-    payload = {
-        'model': model,
-        'messages': [{'role': 'user', 'content': [
-            {'type': 'text', 'text': prompt},
-            {'type': 'image_url', 'image_url': {'url': source_data_url}},
-            {'type': 'image_url', 'image_url': {'url': style_data_url}},
-        ]}],
-        'extra_body': extra_body,
-    }
     session = _get_http_session()
-    max_retries = 2
-    result = None
-    for attempt in range(max_retries + 1):
-        try:
-            response = session.post(
-                endpoint,
-                json=payload,
-                headers={'Content-Type': 'application/json', 'x-api-key': api_key},
-                timeout=timeout,
-            )
-            response.raise_for_status()
-            result = response.json()
-            break
-        except requests.HTTPError as exc:
-            code = exc.response.status_code if exc.response is not None else 0
-            if code in (502, 503, 504) and attempt < max_retries:
-                time.sleep(1.5 * (attempt + 1))
-                continue
-            detail = exc.response.text[:600] if exc.response is not None else str(exc)
-            raise RuntimeError('Image API HTTP {}: {}'.format(code or 'Error', detail)) from exc
-        except requests.RequestException as exc:
-            if attempt < max_retries:
-                time.sleep(1.5 * (attempt + 1))
-                continue
-            raise RuntimeError('Tidak dapat menghubungi Image API: {}'.format(exc)) from exc
+
+    def _invoke_model(cfg, active_prompt):
+        extra_body = {'height': out_height, 'width': out_width}
+        if cfg.get('steps') and cfg['steps'] > 0:
+            extra_body['num_inference_steps'] = int(cfg['steps'])
+        if cfg.get('guidance_scale') is not None:
+            extra_body['guidance_scale'] = float(cfg['guidance_scale'])
+
+        content_items = [
+            {'type': 'text', 'text': active_prompt},
+            {'type': 'image_url', 'image_url': {'url': source_data_url}},
+        ]
+        # Bonsai Ternary 4B performs true image-to-image style transfer when given 1 image_url + style text prompt.
+        # Qwen Image 2.1 takes both source_data_url and style_data_url.
+        if not cfg.get('single_image_input') and style_data_url:
+            content_items.append({'type': 'image_url', 'image_url': {'url': style_data_url}})
+
+        payload = {
+            'model': cfg['model'],
+            'messages': [{'role': 'user', 'content': content_items}],
+            'extra_body': extra_body,
+        }
+        max_retries = 1 if cfg['id'] == 'qwen' else 2
+        for attempt in range(max_retries + 1):
+            try:
+                response = session.post(
+                    endpoint,
+                    json=payload,
+                    headers={'Content-Type': 'application/json', 'x-api-key': api_key},
+                    timeout=timeout,
+                )
+                response.raise_for_status()
+                return _extract_image_bytes_from_chat_result(response.json(), session)
+            except requests.HTTPError as exc:
+                code = exc.response.status_code if exc.response is not None else 0
+                detail = exc.response.text[:600] if exc.response is not None else str(exc)
+                # Fast-fail if backend port is down (connection refused) so we can immediately failover to Bonsai AI
+                if 'connection refused' in detail.lower() or 'no healthy upstream' in detail.lower():
+                    raise RuntimeError('Image API HTTP {}: {}'.format(code or 'Error', detail)) from exc
+                if code in (502, 503, 504) and attempt < max_retries:
+                    time.sleep(1.2 * (attempt + 1))
+                    continue
+                raise RuntimeError('Image API HTTP {}: {}'.format(code or 'Error', detail)) from exc
+            except requests.RequestException as exc:
+                if attempt < max_retries:
+                    time.sleep(1.2 * (attempt + 1))
+                    continue
+                raise RuntimeError('Tidak dapat menghubungi Image API: {}'.format(exc)) from exc
+
+    active_prompt = (bonsai_prompt or prompt) if model_cfg.get('single_image_input') else prompt
     try:
-        content = result['choices'][0]['message']['content']
-        parts = content if isinstance(content, list) else [{'type': 'text', 'text': content}]
-        image_url = None
-        for part in parts:
-            if isinstance(part, dict) and (part.get('image_url') or part.get('image')):
-                value = part.get('image_url') or part.get('image')
-                image_url = value.get('url') if isinstance(value, dict) else value
-                break
-            text_value = part.get('text', '') if isinstance(part, dict) else ''
-            if text_value.startswith(('data:image/', 'https://', 'http://')):
-                image_url = text_value.strip()
-                break
-        if not image_url:
-            raise ValueError('Response tidak berisi image_url.')
-        if image_url.startswith('data:image/'):
-            image_bytes = base64.b64decode(image_url.split(',', 1)[1])
-        else:
-            image_response = session.get(image_url, timeout=60)
-            image_response.raise_for_status()
-            image_bytes = image_response.content
-        with Image.open(BytesIO(image_bytes)) as generated:
-            generated.verify()
-        return image_bytes
-    except (KeyError, IndexError, TypeError, ValueError, requests.RequestException) as exc:
-        raise RuntimeError('Format response Image API tidak dikenali: {}'.format(exc)) from exc
+        return _invoke_model(model_cfg, active_prompt)
+    except Exception as primary_exc:
+        # If Qwen server is offline (e.g. HTTP 502 connection refused), automatically failover to live Bonsai Ternary 4B AI
+        if model_cfg['id'] != 'bonsai':
+            bonsai_cfg = _resolve_ai_model('bonsai')
+            print(f'[*] {model_cfg["label"]} unavailable ({primary_exc}); failing over to {bonsai_cfg["label"]} cloud AI...')
+            return _invoke_model(bonsai_cfg, bonsai_prompt or prompt)
+        raise
 
 
 def _stylize_fallback_pil(source_img, style_path):
@@ -453,6 +465,7 @@ def _generate_image_via_api(image_path, style, output_path, style_data_url=None,
     if style_data_url is None:
         style_data_url = _encode_image_data_url(style_path)
 
+    style_desc = style.get('prompt_desc') or '{} ({})'.format(style['name'], style.get('mood', style['name']))
     prompt = (
         'Strictly apply strong neural style transfer from Image 2 (the style artwork) onto Image 1 (the photograph). '
         'Repaint 100% of Image 1—including the subject, face shading, hair, clothing, and entire background—using the '
@@ -461,9 +474,15 @@ def _generate_image_via_api(image_path, style, output_path, style_data_url=None,
         'texture and palette faithfully. Keep only the person\'s identity, facial features, pose, and composition from Image 1. '
         'Style reference: {} ({}). Return only the fully stylized image.'
     ).format(style['name'], style.get('mood', style['name']))
+    bonsai_prompt = (
+        'Transform this photograph into a vibrant {}. '
+        'Repaint the entire image—including the subject, clothing, and background—with rich artistic brushwork, '
+        'color palette, and surface texture while strictly preserving the person\'s exact face, identity, pose, and composition.'
+    ).format(style_desc)
     try:
         image_bytes = _call_image_api(
-            prompt, source_data_url, style_data_url, out_width, out_height, ai_model_key=ai_model_key
+            prompt, source_data_url, style_data_url, out_width, out_height,
+            ai_model_key=ai_model_key, bonsai_prompt=bonsai_prompt,
         )
         with open(output_path, 'wb') as output:
             output.write(image_bytes)
@@ -509,6 +528,7 @@ def _generate_batch_grid_via_api(image_paths, style, output_paths, style_data_ur
     if style_data_url is None:
         style_data_url = _encode_image_data_url(style_path)
 
+    style_desc = style.get('prompt_desc') or '{} ({})'.format(style['name'], style.get('mood', style['name']))
     prompt = (
         'Image 1 is a collage containing {} separate photographs inside white grid borders. '
         'Image 2 is the style reference ({}: {}). '
@@ -517,10 +537,16 @@ def _generate_batch_grid_via_api(image_paths, style, output_paths, style_data_ur
         'Repaint the surfaces, colors, and textures of all {} photos to strongly match Image 2 without removing, '
         'shifting, or merging the {} photos.'
     ).format(count, style['name'], style.get('mood', style['name']), count, count, count)
+    bonsai_prompt = (
+        'Transform this 3x2 photo grid collage into a vibrant {} while strictly preserving every subject, '
+        'person, face, pose, and white grid border of all {} panels. Repaint all {} photos with rich artistic '
+        'brushwork, colors, and surface textures without shifting or merging the panels.'
+    ).format(style_desc, count, count)
 
     try:
         image_bytes = _call_image_api(
-            prompt, source_data_url, style_data_url, grid_w, grid_h, ai_model_key=ai_model_key
+            prompt, source_data_url, style_data_url, grid_w, grid_h,
+            ai_model_key=ai_model_key, bonsai_prompt=bonsai_prompt,
         )
         with Image.open(BytesIO(image_bytes)) as rendered:
             rendered_rgb = rendered.convert('RGB')
@@ -532,7 +558,7 @@ def _generate_batch_grid_via_api(image_paths, style, output_paths, style_data_ur
             crop_box = (x0 + inset, y0 + inset, max(x0 + inset + 1, x1 - inset), max(y0 + inset + 1, y1 - inset))
             rendered_rgb.crop(crop_box).save(output_path, format='PNG')
     except Exception as exc:
-        print(f'[*] Qwen Grid API fallback triggered: {exc}')
+        print(f'[*] Grid API fallback triggered ({ai_model_key}): {exc}')
         for image_path, output_path in zip(image_paths, output_paths):
             with Image.open(image_path) as src:
                 fallback = _stylize_fallback_pil(_cover_image(src, (512, 384)), style_path)
@@ -662,61 +688,49 @@ def run_job(job_id, image_paths, selected_indices, style, guest_name, guest_emai
         if engine == 'qwen':
             total = len(image_paths)
             styled_paths = [os.path.join(processed_dir, 'portrait_{:02d}.png'.format(i + 1)) for i in range(total)]
-            if model_cfg['id'] == 'bonsai':
-                _update_progress(job_id, 'Mengolah {} foto dengan {}...'.format(total, ai_label), 20)
+            style_data_url = _encode_image_data_url(os.path.join(STYLE_DIR, style['file']))
+            api_mode = os.environ.get('IMAGE_API_MODE', 'grid').strip().lower()
+            if api_mode == 'grid' and 1 <= total <= 6:
+                _update_progress(job_id, 'Mengirim {} foto sekaligus ke {}...'.format(total, ai_label), 15)
                 with ThreadPoolExecutor(max_workers=2) as executor:
                     mask_future = executor.submit(_precompute_subject_masks, image_paths, selected_indices)
-                    bonsai_future = executor.submit(_generate_bonsai_batch_via_api, image_paths, style, styled_paths)
-                    bonsai_future.result()
-                    _update_progress(job_id, '{} selesai mengolah {} foto!'.format(ai_label, total), 90)
+                    grid_future = executor.submit(
+                        _generate_batch_grid_via_api, image_paths, style, styled_paths, style_data_url, model_cfg['id']
+                    )
+                    grid_future.result()
+                    _update_progress(job_id, '{} selesai! Memisahkan 5 foto hasil...'.format(ai_label), 90)
                     try:
                         precomputed_masks = mask_future.result()
                     except Exception:
                         precomputed_masks = None
             else:
-                style_data_url = _encode_image_data_url(os.path.join(STYLE_DIR, style['file']))
-                api_mode = os.environ.get('IMAGE_API_MODE', 'grid').strip().lower()
-                if api_mode == 'grid' and 1 <= total <= 6:
-                    _update_progress(job_id, 'Mengirim {} foto sekaligus ke {}...'.format(total, ai_label), 15)
-                    with ThreadPoolExecutor(max_workers=2) as executor:
-                        mask_future = executor.submit(_precompute_subject_masks, image_paths, selected_indices)
-                        grid_future = executor.submit(
-                            _generate_batch_grid_via_api, image_paths, style, styled_paths, style_data_url, model_cfg['id']
+                styled_paths = [None] * total
+                max_workers = max(1, min(total, int(os.environ.get('IMAGE_API_WORKERS', '2'))))
+                _update_progress(job_id, 'Mengirim foto ke {} (1/{})...'.format(ai_label, total), 10)
+                completed = 0
+                with ThreadPoolExecutor(max_workers=max_workers + 1) as executor:
+                    mask_future = executor.submit(_precompute_subject_masks, image_paths, selected_indices)
+                    future_to_idx = {}
+                    for index, image_path in enumerate(image_paths):
+                        output_path = os.path.join(processed_dir, 'portrait_{:02d}.png'.format(index + 1))
+                        fut = executor.submit(
+                            _generate_image_via_api, image_path, style, output_path, style_data_url, model_cfg['id']
                         )
-                        grid_future.result()
-                        _update_progress(job_id, '{} selesai! Memisahkan 5 foto hasil...'.format(ai_label), 90)
-                        try:
-                            precomputed_masks = mask_future.result()
-                        except Exception:
-                            precomputed_masks = None
-                else:
-                    styled_paths = [None] * total
-                    max_workers = max(1, min(total, int(os.environ.get('IMAGE_API_WORKERS', '2'))))
-                    _update_progress(job_id, 'Mengirim foto ke {} (1/{})...'.format(ai_label, total), 10)
-                    completed = 0
-                    with ThreadPoolExecutor(max_workers=max_workers + 1) as executor:
-                        mask_future = executor.submit(_precompute_subject_masks, image_paths, selected_indices)
-                        future_to_idx = {}
-                        for index, image_path in enumerate(image_paths):
-                            output_path = os.path.join(processed_dir, 'portrait_{:02d}.png'.format(index + 1))
-                            fut = executor.submit(
-                                _generate_image_via_api, image_path, style, output_path, style_data_url, model_cfg['id']
-                            )
-                            future_to_idx[fut] = (index, output_path)
-                        for fut in as_completed(future_to_idx):
-                            idx, out_path = future_to_idx[fut]
-                            fut.result()
-                            styled_paths[idx] = out_path
-                            completed += 1
-                            _update_progress(
-                                job_id,
-                                '{} selesai mengolah {} dari {} foto'.format(ai_label, completed, total),
-                                10 + int(84 * completed / total),
-                            )
-                        try:
-                            precomputed_masks = mask_future.result()
-                        except Exception:
-                            precomputed_masks = None
+                        future_to_idx[fut] = (index, output_path)
+                    for fut in as_completed(future_to_idx):
+                        idx, out_path = future_to_idx[fut]
+                        fut.result()
+                        styled_paths[idx] = out_path
+                        completed += 1
+                        _update_progress(
+                            job_id,
+                            '{} selesai mengolah {} dari {} foto'.format(ai_label, completed, total),
+                            10 + int(84 * completed / total),
+                        )
+                    try:
+                        precomputed_masks = mask_future.result()
+                    except Exception:
+                        precomputed_masks = None
         elif engine == 'gatys_cpu':
             import neural_style_transfer as nst
             for index, image_path in enumerate(image_paths):
