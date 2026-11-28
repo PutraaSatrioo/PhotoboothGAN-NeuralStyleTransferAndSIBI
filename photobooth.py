@@ -301,115 +301,127 @@ def _encode_image_data_url(path, max_dim=None, quality=None):
 
 
 AI_MODELS = {
-    'colab': {
-        'id': 'colab',
-        'label': 'NST Google Colab AI',
-        'endpoint': os.environ.get(
-            'COLAB_NST_URL',
-            'https://coordinated-resolutions-exchange-wage.trycloudflare.com/api/stylize',
+    'bonsai': {
+        'id': 'bonsai',
+        'label': 'Bonsai Ternary 4B',
+        'model': os.environ.get(
+            'BONSAI_IMAGE_MODEL',
+            'vllm-omni/prism-ml/bonsai-image-ternary-4B-unpacked',
         ).strip(),
+        'steps': int(os.environ.get('BONSAI_API_STEPS', '8')),
+        'guidance_scale': float(os.environ.get('BONSAI_GUIDANCE_SCALE', '1.5')),
     },
 }
 
 
 def _resolve_ai_model(ai_model_key=None):
-    return AI_MODELS['colab']
+    return AI_MODELS['bonsai']
 
 
-def _extract_image_bytes_from_colab_result(result):
-    image_b64 = None
-    if isinstance(result, dict):
-        if isinstance(result.get('image_base64'), str):
-            image_b64 = result['image_base64']
-        elif isinstance(result.get('data'), dict) and isinstance(result['data'].get('image_base64'), str):
-            image_b64 = result['data']['image_base64']
-        elif isinstance(result.get('imageBase64'), str):
-            image_b64 = result['imageBase64']
-    if not image_b64:
-        raise ValueError('Response NST Colab tidak berisi image_base64: {}'.format(str(result)[:300]))
-    if ',' in image_b64:
-        image_b64 = image_b64.split(',', 1)[1]
-    image_bytes = base64.b64decode(image_b64)
+def _extract_image_bytes_from_chat_result(result, session):
+    content = result['choices'][0]['message']['content']
+    parts = content if isinstance(content, list) else [{'type': 'text', 'text': content}]
+    image_url = None
+    for part in parts:
+        if isinstance(part, dict) and (part.get('image_url') or part.get('image')):
+            value = part.get('image_url') or part.get('image')
+            image_url = value.get('url') if isinstance(value, dict) else value
+            break
+        text_value = part.get('text', '') if isinstance(part, dict) else ''
+        if text_value.startswith(('data:image/', 'https://', 'http://')):
+            image_url = text_value.strip()
+            break
+    if not image_url:
+        raise ValueError('Response tidak berisi image_url.')
+    if image_url.startswith('data:image/'):
+        image_bytes = base64.b64decode(image_url.split(',', 1)[1])
+    else:
+        image_response = session.get(image_url, timeout=60)
+        image_response.raise_for_status()
+        image_bytes = image_response.content
     with Image.open(BytesIO(image_bytes)) as generated:
         generated.verify()
     return image_bytes
 
 
-def _call_image_api(prompt, source_data_url, style_data_url, out_width, out_height, ai_model_key='colab', colab_url=None, style_name=None):
-    """Send Base64 selfie + style description to the Google Colab Stable Diffusion img2img endpoint."""
-    endpoint = (
-        (colab_url or '').strip()
-        or os.environ.get('COLAB_NST_URL', '').strip()
-        or 'https://coordinated-resolutions-exchange-wage.trycloudflare.com/api/stylize'
-    )
+def _call_image_api(prompt, source_data_url, out_width, out_height, ai_model_key='bonsai'):
+    """Bonsai Ternary 4B image-to-image: 1 image_url (photo/grid) + style text prompt."""
+    api_key = os.environ.get('IMAGE_API_KEY', '').strip()
+    if not api_key:
+        raise RuntimeError('IMAGE_API_KEY belum diisi di file .env.')
+    endpoint = os.environ.get('IMAGE_API_URL', 'https://bifrost.hcm-lab.id/v1/chat/completions').strip()
+    model_cfg = _resolve_ai_model(ai_model_key)
     timeout = int(os.environ.get('IMAGE_API_TIMEOUT', '180'))
     session = _get_http_session()
 
     payload = {
-        'selfie': source_data_url,
-        'style_name': style_name or prompt or 'van gogh starry night style, oil painting on canvas',
+        'model': model_cfg['model'],
+        'messages': [{'role': 'user', 'content': [
+            {'type': 'text', 'text': prompt},
+            {'type': 'image_url', 'image_url': {'url': source_data_url}},
+        ]}],
+        'extra_body': {
+            'height': out_height,
+            'width': out_width,
+            'num_inference_steps': model_cfg['steps'],
+            'guidance_scale': model_cfg['guidance_scale'],
+        },
     }
-    if style_data_url:
-        payload['style'] = style_data_url
     last_exc = None
-    for attempt in range(2):
+    for attempt in range(3):
         try:
             response = session.post(
                 endpoint,
                 json=payload,
-                headers={'Content-Type': 'application/json'},
+                headers={'Content-Type': 'application/json', 'x-api-key': api_key},
                 timeout=timeout,
             )
             response.raise_for_status()
-            return _extract_image_bytes_from_colab_result(response.json())
+            return _extract_image_bytes_from_chat_result(response.json(), session)
         except requests.HTTPError as exc:
             code = exc.response.status_code if exc.response is not None else 0
             detail = exc.response.text[:600] if exc.response is not None else str(exc)
-            last_exc = RuntimeError('NST Colab API HTTP {}: {}'.format(code or 'Error', detail))
-            if code in (500, 502, 503, 504) and attempt == 0:
-                time.sleep(1.5)
+            last_exc = RuntimeError('Bonsai API HTTP {}: {}'.format(code or 'Error', detail))
+            if code in (502, 503, 504) and attempt < 2:
+                time.sleep(1.2 * (attempt + 1))
                 continue
             break
         except (requests.RequestException, ValueError, KeyError) as exc:
-            last_exc = RuntimeError('NST Colab API gagal: {}'.format(exc))
-            if attempt == 0:
-                time.sleep(1.2)
+            last_exc = RuntimeError('Bonsai API gagal: {}'.format(exc))
+            if attempt < 2:
+                time.sleep(1.2 * (attempt + 1))
                 continue
             break
-    raise last_exc or RuntimeError('Gagal memanggil endpoint NST Google Colab.')
+    raise last_exc or RuntimeError('Gagal memanggil Bonsai Ternary 4B.')
 
 
-def _generate_image_via_api(image_path, style, output_path, style_data_url=None, ai_model_key='colab', colab_url=None):
+def _style_desc(style):
+    return style.get('prompt_desc') or '{} ({})'.format(style['name'], style.get('mood', style['name']))
+
+
+def _generate_image_via_api(image_path, style, output_path, ai_model_key='bonsai'):
     out_width = int(os.environ.get('IMAGE_API_WIDTH', '512'))
     out_height = int(os.environ.get('IMAGE_API_HEIGHT', '384'))
-    style_path = os.path.join(STYLE_DIR, style['file'])
     with Image.open(image_path) as src:
-        covered_selfie = _cover_image(src, (out_width, out_height))
-    source_data_url = _encode_pil_data_url(covered_selfie)
-    if style_data_url is None:
-        with Image.open(style_path) as st:
-            covered_style = _cover_image(st, (out_width, out_height))
-        style_data_url = _encode_pil_data_url(covered_style)
-
-    image_bytes = _call_image_api(
-        '', source_data_url, style_data_url, out_width, out_height,
-        ai_model_key=ai_model_key, colab_url=colab_url,
-        style_name=style.get('prompt_desc') or '{} style, oil painting on canvas'.format(style['name']),
-    )
+        source_data_url = _encode_pil_data_url(_cover_image(src, (out_width, out_height)))
+    prompt = (
+        'Transform this photograph into a vibrant {}. '
+        'Repaint the entire image—including the subject, clothing, and background—with rich artistic brushwork, '
+        'color palette, and surface texture while strictly preserving the person\'s exact face, identity, pose, and composition.'
+    ).format(_style_desc(style))
+    image_bytes = _call_image_api(prompt, source_data_url, out_width, out_height, ai_model_key=ai_model_key)
     with open(output_path, 'wb') as output:
         output.write(image_bytes)
 
 
-def _generate_batch_grid_via_api(image_paths, style, output_paths, style_data_url=None, ai_model_key='colab', colab_url=None):
-    """Combine up to 6 photos into a single 3x2 grid for 1 cloud render, then split back."""
+def _generate_batch_grid_via_api(image_paths, style, output_paths, ai_model_key='bonsai'):
+    """Combine up to 6 photos into a single 3x2 grid for 1 Bonsai render, then split back."""
     count = len(image_paths)
     if count == 0 or count > 6:
         raise ValueError('Grid batch hanya mendukung 1 sampai 6 foto.')
 
-    default_grid_w = '768'
-    default_grid_h = '512'
-    grid_w = int(os.environ.get('IMAGE_API_GRID_WIDTH', default_grid_w))
-    grid_h = int(os.environ.get('IMAGE_API_GRID_HEIGHT', default_grid_h))
+    grid_w = int(os.environ.get('IMAGE_API_GRID_WIDTH', '768'))
+    grid_h = int(os.environ.get('IMAGE_API_GRID_HEIGHT', '512'))
     cols = 3
     rows = 2 if count > 3 else 1
     pad = 8
@@ -430,16 +442,14 @@ def _generate_batch_grid_via_api(image_paths, style, output_paths, style_data_ur
         grid_img.paste(tile, (x0, y0))
         boxes.append((x0, y0, x0 + tile_w, y0 + tile_h))
 
-    style_path = os.path.join(STYLE_DIR, style['file'])
     source_data_url = _encode_pil_data_url(grid_img)
-    with Image.open(style_path) as st:
-        style_grid_sized = _cover_image(st, (grid_w, grid_h))
-    style_data_url = _encode_pil_data_url(style_grid_sized)
+    prompt = (
+        'Transform this 3x2 photo grid collage into a vibrant {} while strictly preserving every subject, '
+        'person, face, pose, and white grid border of all {} panels. Repaint all {} photos with rich artistic '
+        'brushwork, colors, and surface textures without shifting or merging the panels.'
+    ).format(_style_desc(style), count, count)
 
-    image_bytes = _call_image_api(
-        '', source_data_url, style_data_url, grid_w, grid_h,
-        ai_model_key=ai_model_key, colab_url=colab_url,
-    )
+    image_bytes = _call_image_api(prompt, source_data_url, grid_w, grid_h, ai_model_key=ai_model_key)
     with Image.open(BytesIO(image_bytes)) as rendered:
         rendered_rgb = rendered.convert('RGB')
         if rendered_rgb.size != (grid_w, grid_h):
@@ -561,7 +571,7 @@ def _make_outputs(job_path, original_paths, styled_paths, selected_indices, gues
     return gif_path, mp4_path, jpg_bg_path, jpg_nobg_path, zip_path
 
 
-def run_job(job_id, image_paths, selected_indices, style, guest_name, guest_email=None, ai_model_key='colab', colab_url=None):
+def run_job(job_id, image_paths, selected_indices, style, guest_name, guest_email=None, ai_model_key='bonsai'):
     job_path = os.path.join(JOB_DIR, job_id)
     processed_dir = os.path.join(job_path, 'processed')
     os.makedirs(processed_dir, exist_ok=True)
@@ -570,21 +580,17 @@ def run_job(job_id, image_paths, selected_indices, style, guest_name, guest_emai
     try:
         styled_paths = []
         precomputed_masks = None
-        engine = os.environ.get('PHOTOBOOTH_ENGINE', 'colab').strip().lower()
-        if engine in ('colab', 'gemini', 'qwen', 'bonsai'):
+        engine = os.environ.get('PHOTOBOOTH_ENGINE', 'bonsai').strip().lower()
+        if engine in ('bonsai', 'qwen', 'gemini', 'colab'):
             total = len(image_paths)
             styled_paths = [os.path.join(processed_dir, 'portrait_{:02d}.png'.format(i + 1)) for i in range(total)]
-            out_w = int(os.environ.get('IMAGE_API_WIDTH', '512'))
-            out_h = int(os.environ.get('IMAGE_API_HEIGHT', '384'))
-            with Image.open(os.path.join(STYLE_DIR, style['file'])) as st_im:
-                style_data_url = _encode_pil_data_url(_cover_image(st_im, (out_w, out_h)))
-            api_mode = os.environ.get('IMAGE_API_MODE', 'single').strip().lower()
+            api_mode = os.environ.get('IMAGE_API_MODE', 'grid').strip().lower()
             if api_mode == 'grid' and 1 <= total <= 6:
                 _update_progress(job_id, 'Mengirim {} foto sekaligus ke {}...'.format(total, ai_label), 15)
                 with ThreadPoolExecutor(max_workers=2) as executor:
                     mask_future = executor.submit(_precompute_subject_masks, image_paths, selected_indices)
                     grid_future = executor.submit(
-                        _generate_batch_grid_via_api, image_paths, style, styled_paths, style_data_url, model_cfg['id'], colab_url
+                        _generate_batch_grid_via_api, image_paths, style, styled_paths, model_cfg['id']
                     )
                     grid_future.result()
                     _update_progress(job_id, '{} selesai! Memisahkan 5 foto hasil...'.format(ai_label), 90)
@@ -603,7 +609,7 @@ def run_job(job_id, image_paths, selected_indices, style, guest_name, guest_emai
                     for index, image_path in enumerate(image_paths):
                         output_path = os.path.join(processed_dir, 'portrait_{:02d}.png'.format(index + 1))
                         fut = executor.submit(
-                            _generate_image_via_api, image_path, style, output_path, style_data_url, model_cfg['id'], colab_url
+                            _generate_image_via_api, image_path, style, output_path, model_cfg['id']
                         )
                         future_to_idx[fut] = (index, output_path)
                     for fut in as_completed(future_to_idx):
@@ -724,8 +730,7 @@ def sibi_model_weights():
 def create_capture():
     images = request.files.getlist('photos')
     style_id = request.form.get('style')
-    ai_model_key = 'colab'
-    colab_url = request.form.get('colab_url', '').strip()
+    ai_model_key = 'bonsai'
     selected_value = request.form.get('selected', '')
     guest_name = ' '.join(request.form.get('guest_name', '').split())[:32]
     guest_email = request.form.get('guest_email', '').strip()[:96]
@@ -766,7 +771,7 @@ def create_capture():
         }
     if os.environ.get('VERCEL'):
         run_job(job_id, image_paths, selected_indices, style, guest_name,
-                guest_email=guest_email, ai_model_key=ai_model_key, colab_url=colab_url)
+                guest_email=guest_email, ai_model_key=ai_model_key)
         with JOBS_LOCK:
             job = dict(JOBS.get(job_id, {}))
         if job.get('status') == 'error':
@@ -788,7 +793,7 @@ def create_capture():
             email_sent_to=job.get('email_sent_to') or guest_email,
         ), 200
     threading.Thread(target=run_job,
-                     args=(job_id, image_paths, selected_indices, style, guest_name, guest_email, ai_model_key, colab_url),
+                     args=(job_id, image_paths, selected_indices, style, guest_name, guest_email, ai_model_key),
                      daemon=True).start()
     return jsonify(job_id=job_id), 202
 
