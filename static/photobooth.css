@@ -447,29 +447,31 @@ body.hand-control-active * {
 /* Middle: Virtual Keyboard */
 .welcome-keyboard-row {
   flex: 0 0 auto;
+  width: 100%;
 }
 
 .virtual-keyboard {
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 8px;
   width: 100%;
-  max-width: 1080px;
-  margin: 0 auto;
+  max-width: none;
+  margin: 0;
 }
 
 .key-row {
   display: flex;
-  justify-content: center;
-  gap: 6px;
+  justify-content: stretch;
+  width: 100%;
+  gap: 8px;
 }
 
 .letter-key,
 .function-key {
   height: 52px;
   min-width: 0;
-  flex: 1;
-  max-width: 86px;
+  flex: 1 1 0;
+  max-width: none;
   border: 1.5px solid var(--line-strong);
   background: #ffffff;
   color: var(--ink);

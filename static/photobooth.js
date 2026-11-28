@@ -362,19 +362,12 @@
   const doneButton = document.getElementById('name-done');
   doneButton.addEventListener('click', () => {
     const nameInput = document.getElementById('guest-name');
-    const emailInput = document.getElementById('guest-email');
     let val = nameInput.value.trim().replace(/\s+/g, ' ').slice(0, 32);
-    const emailVal = emailInput ? emailInput.value.trim() : '';
-    if (emailVal && (!emailVal.includes('@') || !emailVal.includes('.'))) {
-      notify('Masukkan alamat email Google yang valid (contoh: nama@gmail.com).');
-      emailInput.focus();
-      return;
-    }
-    guestEmail = emailVal;
     if (!val) {
-      val = guestEmail ? guestEmail.split('@')[0].slice(0, 32) : 'UNESA';
+      val = 'UNESA';
       nameInput.value = val;
     }
+    guestEmail = '';
     guestName = val;
     guestGreeting.textContent = `Halo, ${guestName}`;
 
@@ -637,14 +630,16 @@
     skipWaitingCurrentJob = false;
     document.getElementById('capture-picker').hidden = true;
     document.getElementById('result-section').hidden = true;
-    document.getElementById('progress-bar').style.width = '0%';
-    document.getElementById('processing-pct').textContent = '0%';
+    const bar = document.getElementById('progress-bar');
+    const pctLabel = document.getElementById('processing-pct');
+    if (bar) bar.style.width = '0%';
+    if (pctLabel) pctLabel.textContent = '0%';
     document.getElementById('processing-phase').textContent = `Memproses 5 foto dengan Bonsai Ternary 4B (${activeStyleName})...`;
     const emailNote = document.getElementById('processing-email-note');
     if (emailNote) {
       emailNote.textContent = guestEmail
         ? `LINK GOOGLE DRIVE AKAN DIKIRIM OTOMATIS KE ${guestEmail.toUpperCase()}`
-        : 'TUNGGU HASIL DI SINI ATAU LEWATI KE HALAMAN AWAL';
+        : 'TUNGGU HASIL DI SINI ATAU LEWATI KE PEMILIHAN STYLE';
     }
     processing.hidden = false;
 
@@ -948,25 +943,23 @@
 
     // Reset styles selection
     document.querySelectorAll('.style-card').forEach(c => {
-      c.classList.remove('selected');
+      c.classList.remove('selected', 'style-popping');
       c.setAttribute('aria-pressed', 'false');
     });
 
     if (isMobile) {
-      setMobileStep('welcome');
+      setMobileStep('style');
       return;
     }
 
-    // Return camera video to Screen 1 on desktop/laptop
-    welcomeCameraFrame.prepend(video);
-    document.getElementById('photobooth-app').hidden = true;
-    document.getElementById('welcome-screen').hidden = false;
-
-    const nameInput = document.getElementById('guest-name');
-    nameInput.value = 'UNESA';
-    isDefaultName = true;
-    guestName = 'UNESA';
-    nameInput.focus();
+    // Keep user on Screen 2 (Style Selection & Camera) on desktop/laptop
+    if (video && cameraFrame && video.parentElement !== cameraFrame) {
+      cameraFrame.prepend(video);
+    }
+    if (video) video.hidden = !cameraStream;
+    if (placeholder) placeholder.hidden = !!cameraStream;
+    document.getElementById('welcome-screen').hidden = true;
+    document.getElementById('photobooth-app').hidden = false;
   }
 
   document.getElementById('start-over').addEventListener('click', resetForAnotherPhotoSession);
