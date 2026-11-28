@@ -303,7 +303,7 @@ def _encode_image_data_url(path, max_dim=None, quality=None):
 AI_MODELS = {
     'bonsai': {
         'id': 'bonsai',
-        'label': 'Bonsai Ternary 4B',
+        'label': 'Qwen Image 2.1',
         'model': os.environ.get(
             'BONSAI_IMAGE_MODEL',
             'vllm-omni/prism-ml/bonsai-image-ternary-4B-unpacked',
