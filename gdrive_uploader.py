@@ -170,13 +170,16 @@ def _upload_via_gas_webhook(webhook_url, job_id, job_path, guest_name, guest_ema
 
     # Primary image fields for simple GAS scripts + full files array for multi-file GAS scripts
     primary = files_payload[0]
+    primary_data_url = f"data:{primary['mimeType']};base64,{primary['base64']}"
+    ts_filename = f'photobooth_{int(os.path.getmtime(os.path.join(job_path, primary["filename"])))}.png'
     payload = {
         'job_id': job_id,
         'guest_name': guest_name,
         'guest_email': (guest_email or '').strip(),
         'folder_id': parent_id,
-        'filename': f'Pixora-{guest_name}-{job_id[:8]}.jpg',
+        'filename': ts_filename,
         'mimeType': primary['mimeType'],
+        'imageBase64': primary_data_url,
         'image_base64': primary['base64'],
         'base64': primary['base64'],
         'files': files_payload,
@@ -185,7 +188,8 @@ def _upload_via_gas_webhook(webhook_url, job_id, job_path, guest_name, guest_ema
     response.raise_for_status()
     data = response.json()
     drive_url = (
-        data.get('drive_url')
+        data.get('viewUrl')
+        or data.get('drive_url')
         or data.get('url')
         or data.get('fileUrl')
         or data.get('folderUrl')

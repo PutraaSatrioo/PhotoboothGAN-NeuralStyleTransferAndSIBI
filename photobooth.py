@@ -301,139 +301,83 @@ def _encode_image_data_url(path, max_dim=None, quality=None):
 
 
 AI_MODELS = {
-    'gemini': {
-        'id': 'gemini',
-        'label': 'Gemini Flash Image AI',
-        'model': os.environ.get('GEMINI_IMAGE_MODEL', 'gemini-2.5-flash-image').strip(),
-        'fallback_models': [
-            'gemini-2.5-flash-image',
-            'gemini-3.1-flash-image',
-            'gemini-3.1-flash-lite-image',
-            'gemini-3-pro-image',
-        ],
+    'colab': {
+        'id': 'colab',
+        'label': 'NST Google Colab AI',
+        'endpoint': os.environ.get(
+            'COLAB_NST_URL',
+            'https://flashing-paint-joshua-ambien.trycloudflare.com/api/stylize',
+        ).strip(),
     },
 }
 
 
 def _resolve_ai_model(ai_model_key=None):
-    return AI_MODELS['gemini']
+    return AI_MODELS['colab']
 
 
-def _split_data_url(data_url):
-    if not data_url or ',' not in data_url:
-        raise ValueError('Format data_url gambar tidak valid.')
-    header, b64_data = data_url.split(',', 1)
-    mime_type = 'image/jpeg'
-    if header.startswith('data:') and ';' in header:
-        mime_type = header[5:].split(';', 1)[0] or 'image/jpeg'
-    return mime_type, b64_data
+def _extract_image_bytes_from_colab_result(result):
+    image_b64 = None
+    if isinstance(result, dict):
+        if isinstance(result.get('image_base64'), str):
+            image_b64 = result['image_base64']
+        elif isinstance(result.get('data'), dict) and isinstance(result['data'].get('image_base64'), str):
+            image_b64 = result['data']['image_base64']
+        elif isinstance(result.get('imageBase64'), str):
+            image_b64 = result['imageBase64']
+    if not image_b64:
+        raise ValueError('Response NST Colab tidak berisi image_base64: {}'.format(str(result)[:300]))
+    if ',' in image_b64:
+        image_b64 = image_b64.split(',', 1)[1]
+    image_bytes = base64.b64decode(image_b64)
+    with Image.open(BytesIO(image_bytes)) as generated:
+        generated.verify()
+    return image_bytes
 
 
-def _extract_image_bytes_from_gemini_result(result):
-    candidates = result.get('candidates') or []
-    for candidate in candidates:
-        content = candidate.get('content') or {}
-        parts = content.get('parts') or []
-        for part in parts:
-            inline_data = part.get('inlineData') or part.get('inline_data')
-            if isinstance(inline_data, dict) and inline_data.get('data'):
-                image_bytes = base64.b64decode(inline_data['data'])
-                with Image.open(BytesIO(image_bytes)) as generated:
-                    generated.verify()
-                return image_bytes
-    raise ValueError('Response Gemini API tidak berisi gambar (inlineData).')
-
-
-def _resolve_gemini_api_key():
-    b64_key = os.environ.get('GEMINI_API_KEY_B64', '').strip()
-    if b64_key:
-        try:
-            return base64.b64decode(b64_key).decode('utf-8').strip()
-        except Exception:
-            pass
-    raw_key = (
-        os.environ.get('GEMINI_API_KEY', '').strip()
-        or os.environ.get('GOOGLE_API_KEY', '').strip()
-        or os.environ.get('IMAGE_API_KEY', '').strip()
+def _call_image_api(prompt, source_data_url, style_data_url, out_width, out_height, ai_model_key='colab', colab_url=None):
+    """Send Base64 selfie/grid + Base64 style reference via POST to Google Colab NST endpoint."""
+    endpoint = (
+        (colab_url or '').strip()
+        or os.environ.get('COLAB_NST_URL', '').strip()
+        or 'https://flashing-paint-joshua-ambien.trycloudflare.com/api/stylize'
     )
-    if raw_key.startswith('b64:'):
-        try:
-            return base64.b64decode(raw_key[4:].strip()).decode('utf-8').strip()
-        except Exception:
-            pass
-    return raw_key
-
-
-def _call_image_api(prompt, source_data_url, style_data_url, out_width, out_height, ai_model_key='gemini', bonsai_prompt=None):
-    """Send Base64 selfie/grid + Base64 style reference + prompt to Google Gemini Multimodal API."""
-    api_key = _resolve_gemini_api_key()
-    if not api_key or api_key.startswith('sk-bf-') or api_key == 'ISI_GEMINI_API_KEY_DISINI':
-        raise RuntimeError(
-            'GEMINI_API_KEY belum diisi di file .env (atau Environment Variables Vercel). '
-            'Silakan buat API key di https://aistudio.google.com/apikey'
-        )
-    model_cfg = _resolve_ai_model(ai_model_key)
-    timeout = int(os.environ.get('IMAGE_API_TIMEOUT', '120'))
+    timeout = int(os.environ.get('IMAGE_API_TIMEOUT', '180'))
     session = _get_http_session()
 
-    src_mime, src_b64 = _split_data_url(source_data_url)
-    parts = [
-        {'text': prompt},
-        {'inline_data': {'mime_type': src_mime, 'data': src_b64}},
-    ]
-    if style_data_url:
-        st_mime, st_b64 = _split_data_url(style_data_url)
-        parts.append({'inline_data': {'mime_type': st_mime, 'data': st_b64}})
-
     payload = {
-        'contents': [{'role': 'user', 'parts': parts}],
-        'generationConfig': {
-            'responseModalities': ['TEXT', 'IMAGE'],
-        },
+        'selfie': source_data_url,
+        'style': style_data_url,
     }
-
-    models_to_try = [model_cfg['model']] + [
-        m for m in model_cfg.get('fallback_models', []) if m != model_cfg['model']
-    ]
     last_exc = None
-    for model_name in models_to_try:
-        endpoint = (
-            'https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}'
-        ).format(model_name, api_key)
-        for attempt in range(2):
-            try:
-                response = session.post(
-                    endpoint,
-                    json=payload,
-                    headers={'Content-Type': 'application/json'},
-                    timeout=timeout,
-                )
-                response.raise_for_status()
-                return _extract_image_bytes_from_gemini_result(response.json())
-            except requests.HTTPError as exc:
-                code = exc.response.status_code if exc.response is not None else 0
-                detail = exc.response.text[:600] if exc.response is not None else str(exc)
-                if code == 429 and ('limit: 0' in detail or 'free_tier' in detail):
-                    raise RuntimeError(
-                        'Kuota Gemini Image Generation di API Key ini masih 0 (Free Tier). '
-                        'Aktifkan Pay-as-you-go / Billing pada project Google AI Studio (https://aistudio.google.com/apikey) '
-                        'agar model {} dapat merender gambar.'.format(model_name)
-                    ) from exc
-                last_exc = RuntimeError('Gemini API ({}) HTTP {}: {}'.format(model_name, code or 'Error', detail))
-                if code in (429, 500, 502, 503, 504) and attempt == 0:
-                    time.sleep(1.5)
-                    continue
-                break
-            except (requests.RequestException, ValueError, KeyError) as exc:
-                last_exc = RuntimeError('Gemini API ({}) gagal: {}'.format(model_name, exc))
-                if attempt == 0:
-                    time.sleep(1.2)
-                    continue
-                break
-    raise last_exc or RuntimeError('Gagal memanggil Gemini Image Generation API.')
+    for attempt in range(2):
+        try:
+            response = session.post(
+                endpoint,
+                json=payload,
+                headers={'Content-Type': 'application/json'},
+                timeout=timeout,
+            )
+            response.raise_for_status()
+            return _extract_image_bytes_from_colab_result(response.json())
+        except requests.HTTPError as exc:
+            code = exc.response.status_code if exc.response is not None else 0
+            detail = exc.response.text[:600] if exc.response is not None else str(exc)
+            last_exc = RuntimeError('NST Colab API HTTP {}: {}'.format(code or 'Error', detail))
+            if code in (500, 502, 503, 504) and attempt == 0:
+                time.sleep(1.5)
+                continue
+            break
+        except (requests.RequestException, ValueError, KeyError) as exc:
+            last_exc = RuntimeError('NST Colab API gagal: {}'.format(exc))
+            if attempt == 0:
+                time.sleep(1.2)
+                continue
+            break
+    raise last_exc or RuntimeError('Gagal memanggil endpoint NST Google Colab.')
 
 
-def _generate_image_via_api(image_path, style, output_path, style_data_url=None, ai_model_key='gemini'):
+def _generate_image_via_api(image_path, style, output_path, style_data_url=None, ai_model_key='colab', colab_url=None):
     out_width = int(os.environ.get('IMAGE_API_WIDTH', '512'))
     out_height = int(os.environ.get('IMAGE_API_HEIGHT', '384'))
     style_path = os.path.join(STYLE_DIR, style['file'])
@@ -441,23 +385,15 @@ def _generate_image_via_api(image_path, style, output_path, style_data_url=None,
     if style_data_url is None:
         style_data_url = _encode_image_data_url(style_path)
 
-    style_desc = style.get('prompt_desc') or '{} ({})'.format(style['name'], style.get('mood', style['name']))
-    prompt = (
-        'Strictly apply strong neural style transfer from Image 2 (the style artwork) onto Image 1 (the photograph). '
-        'Repaint 100% of Image 1—including the subject, face shading, hair, clothing, and entire background—using the '
-        'exact color palette, brushwork, pattern motifs, surface texture, and artistic medium visible in Image 2. '
-        'Do NOT leave Image 1 looking like a normal photograph and do NOT invent a generic style; match Image 2\'s visual '
-        'texture and palette faithfully. Keep only the person\'s identity, facial features, pose, and composition from Image 1. '
-        'Style reference: {} ({}). Return only the fully stylized image.'
-    ).format(style['name'], style_desc)
     image_bytes = _call_image_api(
-        prompt, source_data_url, style_data_url, out_width, out_height, ai_model_key=ai_model_key
+        '', source_data_url, style_data_url, out_width, out_height,
+        ai_model_key=ai_model_key, colab_url=colab_url,
     )
     with open(output_path, 'wb') as output:
         output.write(image_bytes)
 
 
-def _generate_batch_grid_via_api(image_paths, style, output_paths, style_data_url=None, ai_model_key='qwen'):
+def _generate_batch_grid_via_api(image_paths, style, output_paths, style_data_url=None, ai_model_key='colab', colab_url=None):
     """Combine up to 6 photos into a single 3x2 grid for 1 cloud render, then split back."""
     count = len(image_paths)
     if count == 0 or count > 6:
@@ -492,24 +428,9 @@ def _generate_batch_grid_via_api(image_paths, style, output_paths, style_data_ur
     if style_data_url is None:
         style_data_url = _encode_image_data_url(style_path)
 
-    style_desc = style.get('prompt_desc') or '{} ({})'.format(style['name'], style.get('mood', style['name']))
-    prompt = (
-        'Image 1 is a collage containing {} separate photographs inside white grid borders. '
-        'Image 2 is the style reference ({}: {}). '
-        'Apply strong neural style transfer from Image 2 onto Image 1 while strictly preserving every subject, '
-        'object, face, outline, position, and white grid border of all {} photos in Image 1. '
-        'Repaint the surfaces, colors, and textures of all {} photos to strongly match Image 2 without removing, '
-        'shifting, or merging the {} photos.'
-    ).format(count, style['name'], style.get('mood', style['name']), count, count, count)
-    bonsai_prompt = (
-        'Transform this 3x2 photo grid collage into a vibrant {} while strictly preserving every subject, '
-        'person, face, pose, and white grid border of all {} panels. Repaint all {} photos with rich artistic '
-        'brushwork, colors, and surface textures without shifting or merging the panels.'
-    ).format(style_desc, count, count)
-
     image_bytes = _call_image_api(
-        prompt, source_data_url, style_data_url, grid_w, grid_h,
-        ai_model_key=ai_model_key, bonsai_prompt=bonsai_prompt,
+        '', source_data_url, style_data_url, grid_w, grid_h,
+        ai_model_key=ai_model_key, colab_url=colab_url,
     )
     with Image.open(BytesIO(image_bytes)) as rendered:
         rendered_rgb = rendered.convert('RGB')
@@ -632,7 +553,7 @@ def _make_outputs(job_path, original_paths, styled_paths, selected_indices, gues
     return gif_path, mp4_path, jpg_bg_path, jpg_nobg_path, zip_path
 
 
-def run_job(job_id, image_paths, selected_indices, style, guest_name, guest_email=None, ai_model_key='qwen'):
+def run_job(job_id, image_paths, selected_indices, style, guest_name, guest_email=None, ai_model_key='colab', colab_url=None):
     job_path = os.path.join(JOB_DIR, job_id)
     processed_dir = os.path.join(job_path, 'processed')
     os.makedirs(processed_dir, exist_ok=True)
@@ -641,8 +562,8 @@ def run_job(job_id, image_paths, selected_indices, style, guest_name, guest_emai
     try:
         styled_paths = []
         precomputed_masks = None
-        engine = os.environ.get('PHOTOBOOTH_ENGINE', 'gemini').strip().lower()
-        if engine in ('gemini', 'qwen', 'bonsai'):
+        engine = os.environ.get('PHOTOBOOTH_ENGINE', 'colab').strip().lower()
+        if engine in ('colab', 'gemini', 'qwen', 'bonsai'):
             total = len(image_paths)
             styled_paths = [os.path.join(processed_dir, 'portrait_{:02d}.png'.format(i + 1)) for i in range(total)]
             style_data_url = _encode_image_data_url(os.path.join(STYLE_DIR, style['file']))
@@ -652,7 +573,7 @@ def run_job(job_id, image_paths, selected_indices, style, guest_name, guest_emai
                 with ThreadPoolExecutor(max_workers=2) as executor:
                     mask_future = executor.submit(_precompute_subject_masks, image_paths, selected_indices)
                     grid_future = executor.submit(
-                        _generate_batch_grid_via_api, image_paths, style, styled_paths, style_data_url, model_cfg['id']
+                        _generate_batch_grid_via_api, image_paths, style, styled_paths, style_data_url, model_cfg['id'], colab_url
                     )
                     grid_future.result()
                     _update_progress(job_id, '{} selesai! Memisahkan 5 foto hasil...'.format(ai_label), 90)
@@ -671,7 +592,7 @@ def run_job(job_id, image_paths, selected_indices, style, guest_name, guest_emai
                     for index, image_path in enumerate(image_paths):
                         output_path = os.path.join(processed_dir, 'portrait_{:02d}.png'.format(index + 1))
                         fut = executor.submit(
-                            _generate_image_via_api, image_path, style, output_path, style_data_url, model_cfg['id']
+                            _generate_image_via_api, image_path, style, output_path, style_data_url, model_cfg['id'], colab_url
                         )
                         future_to_idx[fut] = (index, output_path)
                     for fut in as_completed(future_to_idx):
@@ -792,7 +713,8 @@ def sibi_model_weights():
 def create_capture():
     images = request.files.getlist('photos')
     style_id = request.form.get('style')
-    ai_model_key = 'gemini'
+    ai_model_key = 'colab'
+    colab_url = request.form.get('colab_url', '').strip()
     selected_value = request.form.get('selected', '')
     guest_name = ' '.join(request.form.get('guest_name', '').split())[:32]
     guest_email = request.form.get('guest_email', '').strip()[:96]
@@ -833,7 +755,7 @@ def create_capture():
         }
     if os.environ.get('VERCEL'):
         run_job(job_id, image_paths, selected_indices, style, guest_name,
-                guest_email=guest_email, ai_model_key=ai_model_key)
+                guest_email=guest_email, ai_model_key=ai_model_key, colab_url=colab_url)
         with JOBS_LOCK:
             job = dict(JOBS.get(job_id, {}))
         if job.get('status') == 'error':
@@ -855,7 +777,7 @@ def create_capture():
             email_sent_to=job.get('email_sent_to') or guest_email,
         ), 200
     threading.Thread(target=run_job,
-                     args=(job_id, image_paths, selected_indices, style, guest_name, guest_email, ai_model_key),
+                     args=(job_id, image_paths, selected_indices, style, guest_name, guest_email, ai_model_key, colab_url),
                      daemon=True).start()
     return jsonify(job_id=job_id), 202
 
