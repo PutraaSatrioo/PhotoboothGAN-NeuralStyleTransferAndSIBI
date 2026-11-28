@@ -304,11 +304,12 @@ AI_MODELS = {
     'gemini': {
         'id': 'gemini',
         'label': 'Gemini Flash Image AI',
-        'model': os.environ.get('GEMINI_IMAGE_MODEL', 'gemini-2.0-flash-exp-image-generation').strip(),
+        'model': os.environ.get('GEMINI_IMAGE_MODEL', 'gemini-2.5-flash-image').strip(),
         'fallback_models': [
-            'gemini-2.0-flash-exp-image-generation',
-            'gemini-2.5-flash-image-preview',
-            'gemini-2.0-flash-preview-image-generation',
+            'gemini-2.5-flash-image',
+            'gemini-3.1-flash-image',
+            'gemini-3.1-flash-lite-image',
+            'gemini-3-pro-image',
         ],
     },
 }
@@ -364,6 +365,7 @@ def _resolve_gemini_api_key():
 
 
 def _call_image_api(prompt, source_data_url, style_data_url, out_width, out_height, ai_model_key='gemini', bonsai_prompt=None):
+    """Send Base64 selfie/grid + Base64 style reference + prompt to Google Gemini Multimodal API."""
     api_key = _resolve_gemini_api_key()
     if not api_key or api_key.startswith('sk-bf-') or api_key == 'ISI_GEMINI_API_KEY_DISINI':
         raise RuntimeError(
@@ -411,6 +413,12 @@ def _call_image_api(prompt, source_data_url, style_data_url, out_width, out_heig
             except requests.HTTPError as exc:
                 code = exc.response.status_code if exc.response is not None else 0
                 detail = exc.response.text[:600] if exc.response is not None else str(exc)
+                if code == 429 and ('limit: 0' in detail or 'free_tier' in detail):
+                    raise RuntimeError(
+                        'Kuota Gemini Image Generation di API Key ini masih 0 (Free Tier). '
+                        'Aktifkan Pay-as-you-go / Billing pada project Google AI Studio (https://aistudio.google.com/apikey) '
+                        'agar model {} dapat merender gambar.'.format(model_name)
+                    ) from exc
                 last_exc = RuntimeError('Gemini API ({}) HTTP {}: {}'.format(model_name, code or 'Error', detail))
                 if code in (429, 500, 502, 503, 504) and attempt == 0:
                     time.sleep(1.5)
@@ -425,41 +433,7 @@ def _call_image_api(prompt, source_data_url, style_data_url, out_width, out_heig
     raise last_exc or RuntimeError('Gagal memanggil Gemini Image Generation API.')
 
 
-def _stylize_fallback_pil(source_img, style_path):
-    """Fast artistic color-palette & texture style transfer fallback if remote GPU server is down."""
-    import numpy as np
-    from PIL import ImageEnhance, ImageFilter
-
-    src = source_img.convert('RGB')
-    w, h = src.size
-    with Image.open(style_path) as st_raw:
-        st = ImageOps.fit(st_raw.convert('RGB'), (w, h), method=LANCZOS)
-
-    src_arr = np.asarray(src, dtype=np.float32)
-    st_arr = np.asarray(st, dtype=np.float32)
-
-    # Reinhard color statistics transfer (blend 68% style palette + 32% original skin/lighting)
-    src_mean = src_arr.mean(axis=(0, 1), keepdims=True)
-    src_std = src_arr.std(axis=(0, 1), keepdims=True) + 1e-5
-    st_mean = st_arr.mean(axis=(0, 1), keepdims=True)
-    st_std = st_arr.std(axis=(0, 1), keepdims=True) + 1e-5
-
-    recolored = (src_arr - src_mean) * (st_std / src_std) + st_mean
-    recolored = np.clip(0.68 * recolored + 0.32 * src_arr, 0, 255)
-
-    # Blend subtle high-frequency brushwork texture from the style image
-    st_blur = np.asarray(st.filter(ImageFilter.GaussianBlur(radius=6)), dtype=np.float32)
-    st_detail = st_arr - st_blur
-    stylized_arr = np.clip(recolored + 0.42 * st_detail, 0, 255).astype(np.uint8)
-
-    out = Image.fromarray(stylized_arr, mode='RGB')
-    out = out.filter(ImageFilter.SMOOTH_MORE)
-    out = ImageEnhance.Color(out).enhance(1.18)
-    out = ImageEnhance.Contrast(out).enhance(1.08)
-    return out
-
-
-def _generate_image_via_api(image_path, style, output_path, style_data_url=None, ai_model_key='qwen'):
+def _generate_image_via_api(image_path, style, output_path, style_data_url=None, ai_model_key='gemini'):
     out_width = int(os.environ.get('IMAGE_API_WIDTH', '512'))
     out_height = int(os.environ.get('IMAGE_API_HEIGHT', '384'))
     style_path = os.path.join(STYLE_DIR, style['file'])
@@ -475,24 +449,12 @@ def _generate_image_via_api(image_path, style, output_path, style_data_url=None,
         'Do NOT leave Image 1 looking like a normal photograph and do NOT invent a generic style; match Image 2\'s visual '
         'texture and palette faithfully. Keep only the person\'s identity, facial features, pose, and composition from Image 1. '
         'Style reference: {} ({}). Return only the fully stylized image.'
-    ).format(style['name'], style.get('mood', style['name']))
-    bonsai_prompt = (
-        'Transform this photograph into a vibrant {}. '
-        'Repaint the entire image—including the subject, clothing, and background—with rich artistic brushwork, '
-        'color palette, and surface texture while strictly preserving the person\'s exact face, identity, pose, and composition.'
-    ).format(style_desc)
-    try:
-        image_bytes = _call_image_api(
-            prompt, source_data_url, style_data_url, out_width, out_height,
-            ai_model_key=ai_model_key, bonsai_prompt=bonsai_prompt,
-        )
-        with open(output_path, 'wb') as output:
-            output.write(image_bytes)
-    except Exception as exc:
-        print(f'[*] AI API fallback triggered ({ai_model_key}) for {os.path.basename(image_path)}: {exc}')
-        with Image.open(image_path) as src:
-            fallback = _stylize_fallback_pil(_cover_image(src, (out_width, out_height)), style_path)
-            fallback.save(output_path, format='PNG')
+    ).format(style['name'], style_desc)
+    image_bytes = _call_image_api(
+        prompt, source_data_url, style_data_url, out_width, out_height, ai_model_key=ai_model_key
+    )
+    with open(output_path, 'wb') as output:
+        output.write(image_bytes)
 
 
 def _generate_batch_grid_via_api(image_paths, style, output_paths, style_data_url=None, ai_model_key='qwen'):
@@ -545,26 +507,19 @@ def _generate_batch_grid_via_api(image_paths, style, output_paths, style_data_ur
         'brushwork, colors, and surface textures without shifting or merging the panels.'
     ).format(style_desc, count, count)
 
-    try:
-        image_bytes = _call_image_api(
-            prompt, source_data_url, style_data_url, grid_w, grid_h,
-            ai_model_key=ai_model_key, bonsai_prompt=bonsai_prompt,
-        )
-        with Image.open(BytesIO(image_bytes)) as rendered:
-            rendered_rgb = rendered.convert('RGB')
-            if rendered_rgb.size != (grid_w, grid_h):
-                rendered_rgb = rendered_rgb.resize((grid_w, grid_h), resample=LANCZOS)
+    image_bytes = _call_image_api(
+        prompt, source_data_url, style_data_url, grid_w, grid_h,
+        ai_model_key=ai_model_key, bonsai_prompt=bonsai_prompt,
+    )
+    with Image.open(BytesIO(image_bytes)) as rendered:
+        rendered_rgb = rendered.convert('RGB')
+        if rendered_rgb.size != (grid_w, grid_h):
+            rendered_rgb = rendered_rgb.resize((grid_w, grid_h), resample=LANCZOS)
 
-        inset = 4
-        for (x0, y0, x1, y1), output_path in zip(boxes, output_paths):
-            crop_box = (x0 + inset, y0 + inset, max(x0 + inset + 1, x1 - inset), max(y0 + inset + 1, y1 - inset))
-            rendered_rgb.crop(crop_box).save(output_path, format='PNG')
-    except Exception as exc:
-        print(f'[*] Grid API fallback triggered ({ai_model_key}): {exc}')
-        for image_path, output_path in zip(image_paths, output_paths):
-            with Image.open(image_path) as src:
-                fallback = _stylize_fallback_pil(_cover_image(src, (512, 384)), style_path)
-                fallback.save(output_path, format='PNG')
+    inset = 4
+    for (x0, y0, x1, y1), output_path in zip(boxes, output_paths):
+        crop_box = (x0 + inset, y0 + inset, max(x0 + inset + 1, x1 - inset), max(y0 + inset + 1, y1 - inset))
+        rendered_rgb.crop(crop_box).save(output_path, format='PNG')
 
 
 def _precompute_subject_masks(original_paths, selected_indices):
@@ -791,8 +746,8 @@ def run_job(job_id, image_paths, selected_indices, style, guest_name, guest_emai
         if jpg_nobg_path and os.path.isfile(jpg_nobg_path):
             done_payload['frame_nobg'] = 'studio-sela-frame-nobg.jpg'
 
-        if guest_email and '@' in guest_email:
-            _update_progress(job_id, 'Mengunggah ke Google Drive & mengirim link ke email...', 98)
+        if (guest_email and '@' in guest_email) or os.environ.get('GAS_WEBHOOK_URL', '').strip():
+            _update_progress(job_id, 'Mengunggah ke Google Drive & menyiapkan QR Code...', 98)
             drive_res = gdrive_uploader.upload_job_to_drive(
                 job_id, job_path, guest_name, guest_email=guest_email
             )

@@ -142,8 +142,84 @@ def send_smtp_email(recipient_email, guest_name, drive_url):
         return False
 
 
+def _upload_via_gas_webhook(webhook_url, job_id, job_path, guest_name, guest_email=None):
+    """Send Base64 rendered files via POST to a Google Apps Script Web App webhook."""
+    import requests
+
+    parent_id = get_parent_folder_id()
+    files_payload = []
+    files_to_send = [
+        ('studio-sela-frame.jpg', 'image/jpeg'),
+        ('studio-sela-frame-nobg.jpg', 'image/jpeg'),
+        ('studio-sela-loop.gif', 'image/gif'),
+    ]
+    for filename, mimetype in files_to_send:
+        file_path = os.path.join(job_path, filename)
+        if not os.path.isfile(file_path):
+            continue
+        with open(file_path, 'rb') as f:
+            b64_content = base64.b64encode(f.read()).decode('ascii')
+        files_payload.append({
+            'filename': filename,
+            'mimeType': mimetype,
+            'base64': b64_content,
+        })
+
+    if not files_payload:
+        raise RuntimeError('Tidak ada file hasil render untuk dikirim ke Google Apps Script.')
+
+    # Primary image fields for simple GAS scripts + full files array for multi-file GAS scripts
+    primary = files_payload[0]
+    payload = {
+        'job_id': job_id,
+        'guest_name': guest_name,
+        'guest_email': (guest_email or '').strip(),
+        'folder_id': parent_id,
+        'filename': f'Pixora-{guest_name}-{job_id[:8]}.jpg',
+        'mimeType': primary['mimeType'],
+        'image_base64': primary['base64'],
+        'base64': primary['base64'],
+        'files': files_payload,
+    }
+    response = requests.post(webhook_url, json=payload, timeout=90)
+    response.raise_for_status()
+    data = response.json()
+    drive_url = (
+        data.get('drive_url')
+        or data.get('url')
+        or data.get('fileUrl')
+        or data.get('folderUrl')
+        or data.get('webViewLink')
+    )
+    if not drive_url:
+        raise RuntimeError(f'Google Apps Script tidak mengembalikan drive_url: {data}')
+    clean_email = (guest_email or '').strip()
+    return {
+        'success': True,
+        'needs_setup': False,
+        'drive_url': drive_url,
+        'qr_base64': generate_qr_base64(drive_url),
+        'email_sent': bool(data.get('email_sent', bool(clean_email))),
+        'email_sent_to': clean_email or None,
+    }
+
+
 def upload_job_to_drive(job_id, job_path, guest_name, guest_email=None):
-    """Upload a completed photo package, share/email link if guest_email given, and return share URL + QR."""
+    """Upload a completed photo package via Google Apps Script webhook (if configured) or Drive API."""
+    gas_webhook_url = os.environ.get('GAS_WEBHOOK_URL', '').strip()
+    if gas_webhook_url:
+        try:
+            return _upload_via_gas_webhook(gas_webhook_url, job_id, job_path, guest_name, guest_email=guest_email)
+        except Exception as exc:
+            detail = str(exc)
+            print(f'[Google Apps Script] Upload gagal untuk job {job_id}: {detail}', file=sys.stderr)
+            return {
+                'success': False,
+                'needs_setup': False,
+                'error': detail,
+                'message': f'Upload Google Apps Script gagal: {detail}',
+            }
+
     parent_id = get_parent_folder_id()
     if not parent_id:
         return {
