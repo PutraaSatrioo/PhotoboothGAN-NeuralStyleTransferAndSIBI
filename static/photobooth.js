@@ -24,7 +24,7 @@
   let captureSequenceActive = false;
   let activeStyleId = 'vg_starry_night';
   let activeStyleName = 'Starry Night';
-  let selectedAiModel = 'qwen';
+  let selectedAiModel = 'bonsai';
   let guestName = 'UNESA';
   let guestEmail = '';
   let isDefaultName = true;
@@ -619,16 +619,6 @@
   }
 
   const confirmBtn = document.getElementById('confirm-selection');
-  document.querySelectorAll('.ai-model-option').forEach(btn => {
-    btn.addEventListener('click', () => {
-      selectedAiModel = btn.dataset.aiModel || 'qwen';
-      document.querySelectorAll('.ai-model-option').forEach(b => {
-        const isSel = b === btn;
-        b.classList.toggle('selected', isSel);
-        b.setAttribute('aria-pressed', isSel ? 'true' : 'false');
-      });
-    });
-  });
 
   confirmBtn.addEventListener('click', () => {
     if (selectedForFrame.size !== framePhotoCount) {
@@ -645,12 +635,11 @@
 
   async function submitCaptureJob() {
     skipWaitingCurrentJob = false;
-    const aiLabel = selectedAiModel === 'bonsai' ? 'Bonsai Ternary 4B' : 'Qwen Image 2.1';
     document.getElementById('capture-picker').hidden = true;
     document.getElementById('result-section').hidden = true;
     document.getElementById('progress-bar').style.width = '0%';
     document.getElementById('processing-pct').textContent = '0%';
-    document.getElementById('processing-phase').textContent = `Memproses 5 foto dengan ${aiLabel} (${activeStyleName})...`;
+    document.getElementById('processing-phase').textContent = `Memproses 5 foto dengan Bonsai Ternary 4B (${activeStyleName})...`;
     const emailNote = document.getElementById('processing-email-note');
     if (emailNote) {
       emailNote.textContent = guestEmail

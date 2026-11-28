@@ -301,14 +301,6 @@ def _encode_image_data_url(path, max_dim=None, quality=None):
 
 
 AI_MODELS = {
-    'qwen': {
-        'id': 'qwen',
-        'label': 'Qwen Image 2.1',
-        'model': os.environ.get('IMAGE_MODEL', 'Qwen/Qwen-Image-2.1').strip(),
-        'steps': int(os.environ.get('IMAGE_API_STEPS', '8')),
-        'guidance_scale': None,
-        'single_image_input': False,
-    },
     'bonsai': {
         'id': 'bonsai',
         'label': 'Bonsai Ternary 4B',
@@ -324,8 +316,8 @@ AI_MODELS = {
 
 
 def _resolve_ai_model(ai_model_key=None):
-    key = (ai_model_key or 'qwen').strip().lower()
-    return AI_MODELS.get(key, AI_MODELS['qwen'])
+    key = (ai_model_key or 'bonsai').strip().lower()
+    return AI_MODELS.get(key, AI_MODELS['bonsai'])
 
 
 def _extract_image_bytes_from_chat_result(result, session):
@@ -835,9 +827,9 @@ def sibi_model_weights():
 def create_capture():
     images = request.files.getlist('photos')
     style_id = request.form.get('style')
-    ai_model_key = request.form.get('ai_model', 'qwen').strip().lower()
+    ai_model_key = request.form.get('ai_model', 'bonsai').strip().lower()
     if ai_model_key not in AI_MODELS:
-        ai_model_key = 'qwen'
+        ai_model_key = 'bonsai'
     selected_value = request.form.get('selected', '')
     guest_name = ' '.join(request.form.get('guest_name', '').split())[:32]
     guest_email = request.form.get('guest_email', '').strip()[:96]
