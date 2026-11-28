@@ -25,7 +25,7 @@
   let activeStyleId = 'vg_starry_night';
   let activeStyleName = 'Starry Night';
   let selectedAiModel = 'colab';
-  const defaultColabNstUrl = 'https://flashing-paint-joshua-ambien.trycloudflare.com/api/stylize';
+  const defaultColabNstUrl = 'https://gentle-assistance-instrumental-microwave.trycloudflare.com/api/stylize';
   let guestName = 'UNESA';
   let guestEmail = '';
   let isDefaultName = true;
@@ -651,7 +651,7 @@
       });
       form.append('style', activeStyleId);
       form.append('ai_model', selectedAiModel);
-      const savedColabUrl = (localStorage.getItem('COLAB_NST_URL') || defaultColabNstUrl).trim();
+      const savedColabUrl = (localStorage.getItem('COLAB_NST_URL_CUSTOM') || defaultColabNstUrl).trim();
       form.append('colab_url', savedColabUrl);
       form.append('selected', Array.from(selectedForFrame).sort((a, b) => a - b).join(','));
       form.append('guest_name', guestName);

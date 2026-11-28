@@ -306,7 +306,7 @@ AI_MODELS = {
         'label': 'NST Google Colab AI',
         'endpoint': os.environ.get(
             'COLAB_NST_URL',
-            'https://flashing-paint-joshua-ambien.trycloudflare.com/api/stylize',
+            'https://gentle-assistance-instrumental-microwave.trycloudflare.com/api/stylize',
         ).strip(),
     },
 }
@@ -340,7 +340,7 @@ def _call_image_api(prompt, source_data_url, style_data_url, out_width, out_heig
     endpoint = (
         (colab_url or '').strip()
         or os.environ.get('COLAB_NST_URL', '').strip()
-        or 'https://flashing-paint-joshua-ambien.trycloudflare.com/api/stylize'
+        or 'https://gentle-assistance-instrumental-microwave.trycloudflare.com/api/stylize'
     )
     timeout = int(os.environ.get('IMAGE_API_TIMEOUT', '180'))
     session = _get_http_session()
