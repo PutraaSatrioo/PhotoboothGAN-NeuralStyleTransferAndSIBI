@@ -381,9 +381,13 @@ def _generate_image_via_api(image_path, style, output_path, style_data_url=None,
     out_width = int(os.environ.get('IMAGE_API_WIDTH', '512'))
     out_height = int(os.environ.get('IMAGE_API_HEIGHT', '384'))
     style_path = os.path.join(STYLE_DIR, style['file'])
-    source_data_url = _encode_image_data_url(image_path)
+    with Image.open(image_path) as src:
+        covered_selfie = _cover_image(src, (out_width, out_height))
+    source_data_url = _encode_pil_data_url(covered_selfie)
     if style_data_url is None:
-        style_data_url = _encode_image_data_url(style_path)
+        with Image.open(style_path) as st:
+            covered_style = _cover_image(st, (out_width, out_height))
+        style_data_url = _encode_pil_data_url(covered_style)
 
     image_bytes = _call_image_api(
         '', source_data_url, style_data_url, out_width, out_height,
@@ -425,8 +429,9 @@ def _generate_batch_grid_via_api(image_paths, style, output_paths, style_data_ur
 
     style_path = os.path.join(STYLE_DIR, style['file'])
     source_data_url = _encode_pil_data_url(grid_img)
-    if style_data_url is None:
-        style_data_url = _encode_image_data_url(style_path)
+    with Image.open(style_path) as st:
+        style_grid_sized = _cover_image(st, (grid_w, grid_h))
+    style_data_url = _encode_pil_data_url(style_grid_sized)
 
     image_bytes = _call_image_api(
         '', source_data_url, style_data_url, grid_w, grid_h,
@@ -566,8 +571,11 @@ def run_job(job_id, image_paths, selected_indices, style, guest_name, guest_emai
         if engine in ('colab', 'gemini', 'qwen', 'bonsai'):
             total = len(image_paths)
             styled_paths = [os.path.join(processed_dir, 'portrait_{:02d}.png'.format(i + 1)) for i in range(total)]
-            style_data_url = _encode_image_data_url(os.path.join(STYLE_DIR, style['file']))
-            api_mode = os.environ.get('IMAGE_API_MODE', 'grid').strip().lower()
+            out_w = int(os.environ.get('IMAGE_API_WIDTH', '512'))
+            out_h = int(os.environ.get('IMAGE_API_HEIGHT', '384'))
+            with Image.open(os.path.join(STYLE_DIR, style['file'])) as st_im:
+                style_data_url = _encode_pil_data_url(_cover_image(st_im, (out_w, out_h)))
+            api_mode = os.environ.get('IMAGE_API_MODE', 'single').strip().lower()
             if api_mode == 'grid' and 1 <= total <= 6:
                 _update_progress(job_id, 'Mengirim {} foto sekaligus ke {}...'.format(total, ai_label), 15)
                 with ThreadPoolExecutor(max_workers=2) as executor:
