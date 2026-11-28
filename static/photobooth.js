@@ -24,7 +24,7 @@
   let captureSequenceActive = false;
   let activeStyleId = 'vg_starry_night';
   let activeStyleName = 'Starry Night';
-  let selectedAiModel = 'bonsai';
+  let selectedAiModel = 'gemini';
   let guestName = 'UNESA';
   let guestEmail = '';
   let isDefaultName = true;
@@ -634,7 +634,7 @@
     const pctLabel = document.getElementById('processing-pct');
     if (bar) bar.style.width = '0%';
     if (pctLabel) pctLabel.textContent = '0%';
-    document.getElementById('processing-phase').textContent = `Memproses 5 foto dengan Bonsai Ternary 4B (${activeStyleName})...`;
+    document.getElementById('processing-phase').textContent = `Memproses 5 foto dengan Gemini AI (${activeStyleName})...`;
     const emailNote = document.getElementById('processing-email-note');
     if (emailNote) {
       emailNote.textContent = guestEmail

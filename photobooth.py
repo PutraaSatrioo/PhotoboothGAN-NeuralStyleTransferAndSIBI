@@ -301,118 +301,128 @@ def _encode_image_data_url(path, max_dim=None, quality=None):
 
 
 AI_MODELS = {
-    'bonsai': {
-        'id': 'bonsai',
-        'label': 'Bonsai Ternary 4B',
-        'model': os.environ.get(
-            'BONSAI_IMAGE_MODEL',
-            'vllm-omni/prism-ml/bonsai-image-ternary-4B-unpacked',
-        ).strip(),
-        'steps': int(os.environ.get('BONSAI_API_STEPS', '8')),
-        'guidance_scale': float(os.environ.get('BONSAI_GUIDANCE_SCALE', '1.5')),
-        'single_image_input': True,
+    'gemini': {
+        'id': 'gemini',
+        'label': 'Gemini Flash Image AI',
+        'model': os.environ.get('GEMINI_IMAGE_MODEL', 'gemini-2.0-flash-exp-image-generation').strip(),
+        'fallback_models': [
+            'gemini-2.0-flash-exp-image-generation',
+            'gemini-2.5-flash-image-preview',
+            'gemini-2.0-flash-preview-image-generation',
+        ],
     },
 }
 
 
 def _resolve_ai_model(ai_model_key=None):
-    key = (ai_model_key or 'bonsai').strip().lower()
-    return AI_MODELS.get(key, AI_MODELS['bonsai'])
+    return AI_MODELS['gemini']
 
 
-def _extract_image_bytes_from_chat_result(result, session):
-    content = result['choices'][0]['message']['content']
-    parts = content if isinstance(content, list) else [{'type': 'text', 'text': content}]
-    image_url = None
-    for part in parts:
-        if isinstance(part, dict) and (part.get('image_url') or part.get('image')):
-            value = part.get('image_url') or part.get('image')
-            image_url = value.get('url') if isinstance(value, dict) else value
-            break
-        text_value = part.get('text', '') if isinstance(part, dict) else ''
-        if text_value.startswith(('data:image/', 'https://', 'http://')):
-            image_url = text_value.strip()
-            break
-    if not image_url:
-        raise ValueError('Response tidak berisi image_url.')
-    if image_url.startswith('data:image/'):
-        image_bytes = base64.b64decode(image_url.split(',', 1)[1])
-    else:
-        image_response = session.get(image_url, timeout=60)
-        image_response.raise_for_status()
-        image_bytes = image_response.content
-    with Image.open(BytesIO(image_bytes)) as generated:
-        generated.verify()
-    return image_bytes
+def _split_data_url(data_url):
+    if not data_url or ',' not in data_url:
+        raise ValueError('Format data_url gambar tidak valid.')
+    header, b64_data = data_url.split(',', 1)
+    mime_type = 'image/jpeg'
+    if header.startswith('data:') and ';' in header:
+        mime_type = header[5:].split(';', 1)[0] or 'image/jpeg'
+    return mime_type, b64_data
 
 
-def _call_image_api(prompt, source_data_url, style_data_url, out_width, out_height, ai_model_key='qwen', bonsai_prompt=None):
-    api_key = os.environ.get('IMAGE_API_KEY', '').strip()
-    if not api_key:
-        raise RuntimeError('IMAGE_API_KEY belum diisi di file .env.')
-    endpoint = os.environ.get('IMAGE_API_URL', 'https://bifrost.hcm-lab.id/v1/chat/completions').strip()
+def _extract_image_bytes_from_gemini_result(result):
+    candidates = result.get('candidates') or []
+    for candidate in candidates:
+        content = candidate.get('content') or {}
+        parts = content.get('parts') or []
+        for part in parts:
+            inline_data = part.get('inlineData') or part.get('inline_data')
+            if isinstance(inline_data, dict) and inline_data.get('data'):
+                image_bytes = base64.b64decode(inline_data['data'])
+                with Image.open(BytesIO(image_bytes)) as generated:
+                    generated.verify()
+                return image_bytes
+    raise ValueError('Response Gemini API tidak berisi gambar (inlineData).')
+
+
+def _resolve_gemini_api_key():
+    b64_key = os.environ.get('GEMINI_API_KEY_B64', '').strip()
+    if b64_key:
+        try:
+            return base64.b64decode(b64_key).decode('utf-8').strip()
+        except Exception:
+            pass
+    raw_key = (
+        os.environ.get('GEMINI_API_KEY', '').strip()
+        or os.environ.get('GOOGLE_API_KEY', '').strip()
+        or os.environ.get('IMAGE_API_KEY', '').strip()
+    )
+    if raw_key.startswith('b64:'):
+        try:
+            return base64.b64decode(raw_key[4:].strip()).decode('utf-8').strip()
+        except Exception:
+            pass
+    return raw_key
+
+
+def _call_image_api(prompt, source_data_url, style_data_url, out_width, out_height, ai_model_key='gemini', bonsai_prompt=None):
+    api_key = _resolve_gemini_api_key()
+    if not api_key or api_key.startswith('sk-bf-') or api_key == 'ISI_GEMINI_API_KEY_DISINI':
+        raise RuntimeError(
+            'GEMINI_API_KEY belum diisi di file .env (atau Environment Variables Vercel). '
+            'Silakan buat API key di https://aistudio.google.com/apikey'
+        )
     model_cfg = _resolve_ai_model(ai_model_key)
-    timeout = int(os.environ.get('IMAGE_API_TIMEOUT', '180'))
+    timeout = int(os.environ.get('IMAGE_API_TIMEOUT', '120'))
     session = _get_http_session()
 
-    def _invoke_model(cfg, active_prompt):
-        extra_body = {'height': out_height, 'width': out_width}
-        if cfg.get('steps') and cfg['steps'] > 0:
-            extra_body['num_inference_steps'] = int(cfg['steps'])
-        if cfg.get('guidance_scale') is not None:
-            extra_body['guidance_scale'] = float(cfg['guidance_scale'])
+    src_mime, src_b64 = _split_data_url(source_data_url)
+    parts = [
+        {'text': prompt},
+        {'inline_data': {'mime_type': src_mime, 'data': src_b64}},
+    ]
+    if style_data_url:
+        st_mime, st_b64 = _split_data_url(style_data_url)
+        parts.append({'inline_data': {'mime_type': st_mime, 'data': st_b64}})
 
-        content_items = [
-            {'type': 'text', 'text': active_prompt},
-            {'type': 'image_url', 'image_url': {'url': source_data_url}},
-        ]
-        # Bonsai Ternary 4B performs true image-to-image style transfer when given 1 image_url + style text prompt.
-        # Qwen Image 2.1 takes both source_data_url and style_data_url.
-        if not cfg.get('single_image_input') and style_data_url:
-            content_items.append({'type': 'image_url', 'image_url': {'url': style_data_url}})
+    payload = {
+        'contents': [{'role': 'user', 'parts': parts}],
+        'generationConfig': {
+            'responseModalities': ['TEXT', 'IMAGE'],
+        },
+    }
 
-        payload = {
-            'model': cfg['model'],
-            'messages': [{'role': 'user', 'content': content_items}],
-            'extra_body': extra_body,
-        }
-        max_retries = 1 if cfg['id'] == 'qwen' else 2
-        for attempt in range(max_retries + 1):
+    models_to_try = [model_cfg['model']] + [
+        m for m in model_cfg.get('fallback_models', []) if m != model_cfg['model']
+    ]
+    last_exc = None
+    for model_name in models_to_try:
+        endpoint = (
+            'https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}'
+        ).format(model_name, api_key)
+        for attempt in range(2):
             try:
                 response = session.post(
                     endpoint,
                     json=payload,
-                    headers={'Content-Type': 'application/json', 'x-api-key': api_key},
+                    headers={'Content-Type': 'application/json'},
                     timeout=timeout,
                 )
                 response.raise_for_status()
-                return _extract_image_bytes_from_chat_result(response.json(), session)
+                return _extract_image_bytes_from_gemini_result(response.json())
             except requests.HTTPError as exc:
                 code = exc.response.status_code if exc.response is not None else 0
                 detail = exc.response.text[:600] if exc.response is not None else str(exc)
-                # Fast-fail if backend port is down (connection refused) so we can immediately failover to Bonsai AI
-                if 'connection refused' in detail.lower() or 'no healthy upstream' in detail.lower():
-                    raise RuntimeError('Image API HTTP {}: {}'.format(code or 'Error', detail)) from exc
-                if code in (502, 503, 504) and attempt < max_retries:
-                    time.sleep(1.2 * (attempt + 1))
+                last_exc = RuntimeError('Gemini API ({}) HTTP {}: {}'.format(model_name, code or 'Error', detail))
+                if code in (429, 500, 502, 503, 504) and attempt == 0:
+                    time.sleep(1.5)
                     continue
-                raise RuntimeError('Image API HTTP {}: {}'.format(code or 'Error', detail)) from exc
-            except requests.RequestException as exc:
-                if attempt < max_retries:
-                    time.sleep(1.2 * (attempt + 1))
+                break
+            except (requests.RequestException, ValueError, KeyError) as exc:
+                last_exc = RuntimeError('Gemini API ({}) gagal: {}'.format(model_name, exc))
+                if attempt == 0:
+                    time.sleep(1.2)
                     continue
-                raise RuntimeError('Tidak dapat menghubungi Image API: {}'.format(exc)) from exc
-
-    active_prompt = (bonsai_prompt or prompt) if model_cfg.get('single_image_input') else prompt
-    try:
-        return _invoke_model(model_cfg, active_prompt)
-    except Exception as primary_exc:
-        # If Qwen server is offline (e.g. HTTP 502 connection refused), automatically failover to live Bonsai Ternary 4B AI
-        if model_cfg['id'] != 'bonsai':
-            bonsai_cfg = _resolve_ai_model('bonsai')
-            print(f'[*] {model_cfg["label"]} unavailable ({primary_exc}); failing over to {bonsai_cfg["label"]} cloud AI...')
-            return _invoke_model(bonsai_cfg, bonsai_prompt or prompt)
-        raise
+                break
+    raise last_exc or RuntimeError('Gagal memanggil Gemini Image Generation API.')
 
 
 def _stylize_fallback_pil(source_img, style_path):
@@ -676,8 +686,8 @@ def run_job(job_id, image_paths, selected_indices, style, guest_name, guest_emai
     try:
         styled_paths = []
         precomputed_masks = None
-        engine = os.environ.get('PHOTOBOOTH_ENGINE', 'qwen').strip().lower()
-        if engine == 'qwen':
+        engine = os.environ.get('PHOTOBOOTH_ENGINE', 'gemini').strip().lower()
+        if engine in ('gemini', 'qwen', 'bonsai'):
             total = len(image_paths)
             styled_paths = [os.path.join(processed_dir, 'portrait_{:02d}.png'.format(i + 1)) for i in range(total)]
             style_data_url = _encode_image_data_url(os.path.join(STYLE_DIR, style['file']))
@@ -827,9 +837,7 @@ def sibi_model_weights():
 def create_capture():
     images = request.files.getlist('photos')
     style_id = request.form.get('style')
-    ai_model_key = request.form.get('ai_model', 'bonsai').strip().lower()
-    if ai_model_key not in AI_MODELS:
-        ai_model_key = 'bonsai'
+    ai_model_key = 'gemini'
     selected_value = request.form.get('selected', '')
     guest_name = ' '.join(request.form.get('guest_name', '').split())[:32]
     guest_email = request.form.get('guest_email', '').strip()[:96]
