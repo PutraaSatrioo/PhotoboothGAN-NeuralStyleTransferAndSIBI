@@ -220,18 +220,46 @@ def _encode_image_data_url(path, max_dim=None, quality=None):
     return _encode_pil_data_url(contained, quality=quality)
 
 
-def _call_image_api(prompt, source_data_url, style_data_url, out_width, out_height):
+AI_MODELS = {
+    'qwen': {
+        'id': 'qwen',
+        'label': 'Qwen Image 2.1',
+        'model': os.environ.get('IMAGE_MODEL', 'Qwen/Qwen-Image-2.1').strip(),
+        'steps': int(os.environ.get('IMAGE_API_STEPS', '8')),
+        'guidance_scale': None,
+    },
+    'bonsai': {
+        'id': 'bonsai',
+        'label': 'Bonsai Ternary 4B',
+        'model': os.environ.get(
+            'BONSAI_IMAGE_MODEL',
+            'vllm-omni/prism-ml/bonsai-image-ternary-4B-unpacked',
+        ).strip(),
+        'steps': int(os.environ.get('BONSAI_API_STEPS', '4')),
+        'guidance_scale': float(os.environ.get('BONSAI_GUIDANCE_SCALE', '1.0')),
+    },
+}
+
+
+def _resolve_ai_model(ai_model_key=None):
+    key = (ai_model_key or 'qwen').strip().lower()
+    return AI_MODELS.get(key, AI_MODELS['qwen'])
+
+
+def _call_image_api(prompt, source_data_url, style_data_url, out_width, out_height, ai_model_key='qwen'):
     api_key = os.environ.get('IMAGE_API_KEY', '').strip()
     if not api_key:
         raise RuntimeError('IMAGE_API_KEY belum diisi di file .env.')
     endpoint = os.environ.get('IMAGE_API_URL', 'https://bifrost.hcm-lab.id/v1/chat/completions').strip()
-    model = os.environ.get('IMAGE_MODEL', 'Qwen/Qwen-Image-2.1').strip()
+    model_cfg = _resolve_ai_model(ai_model_key)
+    model = model_cfg['model']
     timeout = int(os.environ.get('IMAGE_API_TIMEOUT', '180'))
 
     extra_body = {'height': out_height, 'width': out_width}
-    steps_env = os.environ.get('IMAGE_API_STEPS', '8').strip()
-    if steps_env and int(steps_env) > 0:
-        extra_body['num_inference_steps'] = int(steps_env)
+    if model_cfg.get('steps') and model_cfg['steps'] > 0:
+        extra_body['num_inference_steps'] = int(model_cfg['steps'])
+    if model_cfg.get('guidance_scale') is not None:
+        extra_body['guidance_scale'] = float(model_cfg['guidance_scale'])
 
     payload = {
         'model': model,
@@ -330,7 +358,7 @@ def _stylize_fallback_pil(source_img, style_path):
     return out
 
 
-def _generate_image_via_api(image_path, style, output_path, style_data_url=None):
+def _generate_image_via_api(image_path, style, output_path, style_data_url=None, ai_model_key='qwen'):
     out_width = int(os.environ.get('IMAGE_API_WIDTH', '512'))
     out_height = int(os.environ.get('IMAGE_API_HEIGHT', '384'))
     style_path = os.path.join(STYLE_DIR, style['file'])
@@ -347,17 +375,19 @@ def _generate_image_via_api(image_path, style, output_path, style_data_url=None)
         'Style reference: {} ({}). Return only the fully stylized image.'
     ).format(style['name'], style.get('mood', style['name']))
     try:
-        image_bytes = _call_image_api(prompt, source_data_url, style_data_url, out_width, out_height)
+        image_bytes = _call_image_api(
+            prompt, source_data_url, style_data_url, out_width, out_height, ai_model_key=ai_model_key
+        )
         with open(output_path, 'wb') as output:
             output.write(image_bytes)
     except Exception as exc:
-        print(f'[*] Qwen API fallback triggered for {os.path.basename(image_path)}: {exc}')
+        print(f'[*] AI API fallback triggered ({ai_model_key}) for {os.path.basename(image_path)}: {exc}')
         with Image.open(image_path) as src:
             fallback = _stylize_fallback_pil(_cover_image(src, (out_width, out_height)), style_path)
             fallback.save(output_path, format='PNG')
 
 
-def _generate_batch_grid_via_api(image_paths, style, output_paths, style_data_url=None):
+def _generate_batch_grid_via_api(image_paths, style, output_paths, style_data_url=None, ai_model_key='qwen'):
     """Combine up to 6 photos into a single 3x2 grid for 1 cloud render, then split back."""
     count = len(image_paths)
     if count == 0 or count > 6:
@@ -402,7 +432,9 @@ def _generate_batch_grid_via_api(image_paths, style, output_paths, style_data_ur
     ).format(count, style['name'], style.get('mood', style['name']), count, count, count)
 
     try:
-        image_bytes = _call_image_api(prompt, source_data_url, style_data_url, grid_w, grid_h)
+        image_bytes = _call_image_api(
+            prompt, source_data_url, style_data_url, grid_w, grid_h, ai_model_key=ai_model_key
+        )
         with Image.open(BytesIO(image_bytes)) as rendered:
             rendered_rgb = rendered.convert('RGB')
             if rendered_rgb.size != (grid_w, grid_h):
@@ -530,10 +562,12 @@ def _make_outputs(job_path, original_paths, styled_paths, selected_indices, gues
     return gif_path, mp4_path, jpg_bg_path, jpg_nobg_path, zip_path
 
 
-def run_job(job_id, image_paths, selected_indices, style, guest_name, guest_email=None):
+def run_job(job_id, image_paths, selected_indices, style, guest_name, guest_email=None, ai_model_key='qwen'):
     job_path = os.path.join(JOB_DIR, job_id)
     processed_dir = os.path.join(job_path, 'processed')
     os.makedirs(processed_dir, exist_ok=True)
+    model_cfg = _resolve_ai_model(ai_model_key)
+    ai_label = model_cfg['label']
     try:
         styled_paths = []
         precomputed_masks = None
@@ -542,31 +576,35 @@ def run_job(job_id, image_paths, selected_indices, style, guest_name, guest_emai
             total = len(image_paths)
             styled_paths = [os.path.join(processed_dir, 'portrait_{:02d}.png'.format(i + 1)) for i in range(total)]
             style_data_url = _encode_image_data_url(os.path.join(STYLE_DIR, style['file']))
-            api_mode = os.environ.get('IMAGE_API_MODE', 'grid').strip().lower()
+            # Bonsai 4B works best per-photo (4 steps), whereas Qwen 2.1 supports 5-in-1 grid
+            api_mode = 'single' if model_cfg['id'] == 'bonsai' else os.environ.get('IMAGE_API_MODE', 'grid').strip().lower()
             if api_mode == 'grid' and 1 <= total <= 6:
-                _update_progress(job_id, 'Mengirim {} foto sekaligus dalam 1 render server Qwen...'.format(total), 15)
+                _update_progress(job_id, 'Mengirim {} foto sekaligus ke {}...'.format(total, ai_label), 15)
                 with ThreadPoolExecutor(max_workers=2) as executor:
                     mask_future = executor.submit(_precompute_subject_masks, image_paths, selected_indices)
                     grid_future = executor.submit(
-                        _generate_batch_grid_via_api, image_paths, style, styled_paths, style_data_url
+                        _generate_batch_grid_via_api, image_paths, style, styled_paths, style_data_url, model_cfg['id']
                     )
                     grid_future.result()
-                    _update_progress(job_id, 'Server Qwen selesai! Memisahkan 5 foto hasil...', 90)
+                    _update_progress(job_id, '{} selesai! Memisahkan 5 foto hasil...'.format(ai_label), 90)
                     try:
                         precomputed_masks = mask_future.result()
                     except Exception:
                         precomputed_masks = None
             else:
                 styled_paths = [None] * total
-                max_workers = max(1, min(total, int(os.environ.get('IMAGE_API_WORKERS', '2'))))
-                _update_progress(job_id, 'Mengirim foto ke server Qwen (1/{})...'.format(total), 10)
+                default_workers = '3' if model_cfg['id'] == 'bonsai' else '2'
+                max_workers = max(1, min(total, int(os.environ.get('IMAGE_API_WORKERS', default_workers))))
+                _update_progress(job_id, 'Mengirim foto ke {} (1/{})...'.format(ai_label, total), 10)
                 completed = 0
                 with ThreadPoolExecutor(max_workers=max_workers + 1) as executor:
                     mask_future = executor.submit(_precompute_subject_masks, image_paths, selected_indices)
                     future_to_idx = {}
                     for index, image_path in enumerate(image_paths):
                         output_path = os.path.join(processed_dir, 'portrait_{:02d}.png'.format(index + 1))
-                        fut = executor.submit(_generate_image_via_api, image_path, style, output_path, style_data_url)
+                        fut = executor.submit(
+                            _generate_image_via_api, image_path, style, output_path, style_data_url, model_cfg['id']
+                        )
                         future_to_idx[fut] = (index, output_path)
                     for fut in as_completed(future_to_idx):
                         idx, out_path = future_to_idx[fut]
@@ -575,7 +613,7 @@ def run_job(job_id, image_paths, selected_indices, style, guest_name, guest_emai
                         completed += 1
                         _update_progress(
                             job_id,
-                            'Server Qwen selesai mengolah {} dari {} foto'.format(completed, total),
+                            '{} selesai mengolah {} dari {} foto'.format(ai_label, completed, total),
                             10 + int(84 * completed / total),
                         )
                     try:
@@ -686,6 +724,9 @@ def sibi_model_weights():
 def create_capture():
     images = request.files.getlist('photos')
     style_id = request.form.get('style')
+    ai_model_key = request.form.get('ai_model', 'qwen').strip().lower()
+    if ai_model_key not in AI_MODELS:
+        ai_model_key = 'qwen'
     selected_value = request.form.get('selected', '')
     guest_name = ' '.join(request.form.get('guest_name', '').split())[:32]
     guest_email = request.form.get('guest_email', '').strip()[:96]
@@ -722,9 +763,11 @@ def create_capture():
         JOBS[job_id] = {
             'status': 'processing', 'style': style['name'], 'progress': 0,
             'phase': 'Menyiapkan job...', 'guest_email': guest_email,
+            'ai_model': ai_model_key,
         }
     if os.environ.get('VERCEL'):
-        run_job(job_id, image_paths, selected_indices, style, guest_name, guest_email=guest_email)
+        run_job(job_id, image_paths, selected_indices, style, guest_name,
+                guest_email=guest_email, ai_model_key=ai_model_key)
         with JOBS_LOCK:
             job = dict(JOBS.get(job_id, {}))
         if job.get('status') == 'error':
@@ -737,6 +780,7 @@ def create_capture():
             job_id=job_id,
             status='done',
             style=job.get('style', style['name']),
+            ai_model=ai_model_key,
             gif_url=gif_b64,
             frame_url=frame_b64,
             drive_url=job.get('drive_url'),
@@ -745,7 +789,7 @@ def create_capture():
             email_sent_to=job.get('email_sent_to') or guest_email,
         ), 200
     threading.Thread(target=run_job,
-                     args=(job_id, image_paths, selected_indices, style, guest_name, guest_email),
+                     args=(job_id, image_paths, selected_indices, style, guest_name, guest_email, ai_model_key),
                      daemon=True).start()
     return jsonify(job_id=job_id), 202
 

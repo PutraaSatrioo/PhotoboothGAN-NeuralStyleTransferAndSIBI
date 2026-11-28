@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;1,500;1,600&display=swap">
-  <link rel="stylesheet" href="{{ url_for('static', filename='photobooth.css', v='34') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='photobooth.css', v='35') }}">
 </head>
 <body>
   <!-- Persistent background video element for MediaPipe Hand Tracking -->
@@ -262,6 +262,25 @@
         </div>
         <div class="capture-grid" id="capture-grid"></div>
         <div class="picker-actions">
+          <div class="ai-model-picker" id="ai-model-picker" role="radiogroup" aria-label="Pilih Model AI">
+            <span class="ai-picker-label">PILIH ENGINE AI:</span>
+            <div class="ai-model-options">
+              <button type="button" class="ai-model-option selected" data-ai-model="qwen" aria-pressed="true">
+                <span class="ai-option-dot"></span>
+                <div class="ai-option-text">
+                  <strong>Qwen Image 2.1</strong>
+                  <small>Qwen/Qwen-Image-2.1</small>
+                </div>
+              </button>
+              <button type="button" class="ai-model-option" data-ai-model="bonsai" aria-pressed="false">
+                <span class="ai-option-dot"></span>
+                <div class="ai-option-text">
+                  <strong>Bonsai Ternary 4B</strong>
+                  <small>bonsai-image-ternary-4B-unpacked</small>
+                </div>
+              </button>
+            </div>
+          </div>
           <button class="done-bar-button confirm-selection" id="confirm-selection" type="button" disabled>
             <span>LANJUTKAN DENGAN 3 FOTO (0/3)</span>
             <span class="btn-arrow">&rarr;</span>
