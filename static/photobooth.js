@@ -25,7 +25,7 @@
   let activeStyleId = 'vg_starry_night';
   let activeStyleName = 'Starry Night';
   let selectedAiModel = 'colab';
-  const defaultColabNstUrl = 'https://gentle-assistance-instrumental-microwave.trycloudflare.com/api/stylize';
+  const defaultColabNstUrl = 'https://coordinated-resolutions-exchange-wage.trycloudflare.com/api/stylize';
   let guestName = 'UNESA';
   let guestEmail = '';
   let isDefaultName = true;

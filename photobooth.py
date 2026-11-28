@@ -306,7 +306,7 @@ AI_MODELS = {
         'label': 'NST Google Colab AI',
         'endpoint': os.environ.get(
             'COLAB_NST_URL',
-            'https://gentle-assistance-instrumental-microwave.trycloudflare.com/api/stylize',
+            'https://coordinated-resolutions-exchange-wage.trycloudflare.com/api/stylize',
         ).strip(),
     },
 }
@@ -335,20 +335,22 @@ def _extract_image_bytes_from_colab_result(result):
     return image_bytes
 
 
-def _call_image_api(prompt, source_data_url, style_data_url, out_width, out_height, ai_model_key='colab', colab_url=None):
-    """Send Base64 selfie/grid + Base64 style reference via POST to Google Colab NST endpoint."""
+def _call_image_api(prompt, source_data_url, style_data_url, out_width, out_height, ai_model_key='colab', colab_url=None, style_name=None):
+    """Send Base64 selfie + style description to the Google Colab Stable Diffusion img2img endpoint."""
     endpoint = (
         (colab_url or '').strip()
         or os.environ.get('COLAB_NST_URL', '').strip()
-        or 'https://gentle-assistance-instrumental-microwave.trycloudflare.com/api/stylize'
+        or 'https://coordinated-resolutions-exchange-wage.trycloudflare.com/api/stylize'
     )
     timeout = int(os.environ.get('IMAGE_API_TIMEOUT', '180'))
     session = _get_http_session()
 
     payload = {
         'selfie': source_data_url,
-        'style': style_data_url,
+        'style_name': style_name or prompt or 'van gogh starry night style, oil painting on canvas',
     }
+    if style_data_url:
+        payload['style'] = style_data_url
     last_exc = None
     for attempt in range(2):
         try:
@@ -392,6 +394,7 @@ def _generate_image_via_api(image_path, style, output_path, style_data_url=None,
     image_bytes = _call_image_api(
         '', source_data_url, style_data_url, out_width, out_height,
         ai_model_key=ai_model_key, colab_url=colab_url,
+        style_name=style.get('prompt_desc') or '{} style, oil painting on canvas'.format(style['name']),
     )
     with open(output_path, 'wb') as output:
         output.write(image_bytes)
